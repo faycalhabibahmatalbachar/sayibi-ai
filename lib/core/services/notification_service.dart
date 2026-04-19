@@ -19,9 +19,26 @@ class NotificationService {
   static final NotificationService _instance = NotificationService._();
   factory NotificationService() => _instance;
 
+  /// True tant que [firebase_options.dart] contient encore les clés factices.
+  static bool get _firebasePlaceholder {
+    const ph = 'REPLACE_ME';
+    return DefaultFirebaseOptions.web.apiKey == ph ||
+        DefaultFirebaseOptions.android.apiKey == ph ||
+        DefaultFirebaseOptions.ios.apiKey == ph;
+  }
+
   String? fcmToken;
 
   Future<void> init() async {
+    if (_firebasePlaceholder) {
+      if (kDebugMode) {
+        debugPrint(
+          'NotificationService: Firebase non configuré (REPLACE_ME) — '
+          'exécutez : dart pub global activate flutterfire_cli && flutterfire configure',
+        );
+      }
+      return;
+    }
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,

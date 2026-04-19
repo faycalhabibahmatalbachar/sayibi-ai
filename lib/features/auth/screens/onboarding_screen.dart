@@ -49,7 +49,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   _OnboardPage(
                     title: '100% gratuit',
-                    subtitle: 'Conçu pour l’Afrique et le monde francophone.',
+                    subtitle: 'Conçu pour le Tchad, l’Afrique et le monde francophone.',
                     icon: Icons.favorite_outline,
                   ),
                 ],

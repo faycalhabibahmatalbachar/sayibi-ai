@@ -28,29 +28,29 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: '1:000000000000:web:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'sayibi-ai-placeholder',
-    authDomain: 'sayibi-ai-placeholder.firebaseapp.com',
-    storageBucket: 'sayibi-ai-placeholder.appspot.com',
+    apiKey: 'AIzaSyCHq3wlJv9tz4_dPcHymnCdno00-rMZkcE',
+    appId: '1:541871296783:web:926ff55cbbcad385a72e7a',
+    messagingSenderId: '541871296783',
+    projectId: 'sayibi-ai',
+    authDomain: 'sayibi-ai.firebaseapp.com',
+    storageBucket: 'sayibi-ai.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: '1:000000000000:android:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'sayibi-ai-placeholder',
-    storageBucket: 'sayibi-ai-placeholder.appspot.com',
+    apiKey: 'AIzaSyBCMnW0VgWEwYYZzIQL8CRjKIC-xGfdXWg',
+    appId: '1:541871296783:android:9b6302a292529364a72e7a',
+    messagingSenderId: '541871296783',
+    projectId: 'sayibi-ai',
+    storageBucket: 'sayibi-ai.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: '1:000000000000:ios:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'sayibi-ai-placeholder',
-    storageBucket: 'sayibi-ai-placeholder.appspot.com',
-    iosBundleId: 'com.sayibi.ai',
+    apiKey: 'AIzaSyCimIywTqDg_iKoyzEnTsvKNKPGsf65dMI',
+    appId: '1:541871296783:ios:8c65249c95c3cbd6a72e7a',
+    messagingSenderId: '541871296783',
+    projectId: 'sayibi-ai',
+    storageBucket: 'sayibi-ai.firebasestorage.app',
+    iosBundleId: 'com.sayibi.sayibiFlutter',
   );
 
   static const FirebaseOptions macos = ios;
