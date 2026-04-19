@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "541871296783",
+    "project_id": "sayibi-ai",
+    "storage_bucket": "sayibi-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:541871296783:android:0e4e1772e46cab2ea72e7a",
+        "android_client_info": {
+          "package_name": "com.sayibi.ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCMnW0VgWEwYYZzIQL8CRjKIC-xGfdXWg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
