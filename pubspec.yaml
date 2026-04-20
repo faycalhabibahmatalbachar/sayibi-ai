@@ -49,6 +49,7 @@ dependencies:
   record: ^6.2.0
   audioplayers: ^5.2.1
   just_audio: ^0.9.36
+  flutter_tts: ^4.2.3
 
   # Files
   file_picker: ^8.0.0

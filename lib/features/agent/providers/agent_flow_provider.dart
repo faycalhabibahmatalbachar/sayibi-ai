@@ -95,6 +95,9 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
 
   final Ref _ref;
 
+  /// Évite les boucles infinies si l’OS refuse toujours les permissions.
+  int _permissionAutoRecoveryDepth = 0;
+
   AgentApiService get _api => _ref.read(agentApiServiceProvider);
 
   Future<Map<String, bool>> _permissionState() async {
@@ -172,6 +175,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       clearResponse: true,
     );
     state = state.copyWith(anchorMessage: t);
+    _permissionAutoRecoveryDepth = 0;
 
     _ref.read(chatProvider.notifier).appendAgentUserMessage(t);
 
@@ -297,6 +301,15 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
         clearResponse: true,
         successHint: 'Action exécutée automatiquement.',
       );
+      return;
+    }
+
+    if (action == 'permission_needed') {
+      state = state.copyWith(loading: false, lastResponse: data, error: null);
+      if (msg.isNotEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(msg);
+      }
+      unawaited(_autoRecoverFromPermissionNeeded(userMessage: userMessage));
       return;
     }
 
@@ -812,6 +825,54 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     } catch (_) {}
     await _syncContactsResource();
     await _followUp('J’ai mis à jour les autorisations. On continue.');
+  }
+
+  /// Relance le tour agent après [permission_needed] : demande les droits si besoin, puis ré-exécute avec permission_state à jour.
+  Future<void> _autoRecoverFromPermissionNeeded({required String userMessage}) async {
+    if (_permissionAutoRecoveryDepth >= 2) {
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            'Les autorisations SMS ou contacts sont nécessaires. Ouvrez les paramètres de l’application pour les activer.',
+          );
+      return;
+    }
+    _permissionAutoRecoveryDepth++;
+
+    if (kIsWeb) return;
+
+    var ps = await _permissionState();
+    final needContacts = !(ps['contacts'] ?? false);
+    final needSms = !(ps['sms'] ?? false);
+    if (needContacts || needSms) {
+      if (needContacts) await Permission.contacts.request();
+      if (needSms) await Permission.sms.request();
+      try {
+        if (!(ps['phone'] ?? false)) await Permission.phone.request();
+      } catch (_) {}
+      await _syncContactsResource();
+      ps = await _permissionState();
+    }
+
+    if (!(ps['sms'] ?? false) || !(ps['contacts'] ?? false)) {
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            'Autorisations contacts ou SMS non accordées — activez-les puis réessayez.',
+          );
+      return;
+    }
+
+    if (!_ref.read(authProvider).authenticated) return;
+
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final anchor = state.anchorMessage ?? userMessage;
+      final redo = await _runWithSearchLoop(message: anchor, pending: null);
+      if (redo == null) {
+        state = state.copyWith(loading: false, error: 'Réponse agent indisponible.');
+        return;
+      }
+      await _handleAgentData(redo, userMessage: anchor);
+    } catch (e) {
+      state = state.copyWith(loading: false, error: e.toString());
+    }
   }
 
   Future<void> _syncContactsResource() async {

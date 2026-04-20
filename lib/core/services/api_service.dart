@@ -63,7 +63,11 @@ class ApiService {
         final access = d['access_token'] as String?;
         final refresh = d['refresh_token'] as String?;
         if (access != null && refresh != null) {
-          await _tokens.saveTokens(access: access, refresh: refresh);
+          await _tokens.saveTokens(
+            access: access,
+            refresh: refresh,
+            persistSession: await _tokens.getRememberMe(),
+          );
           return true;
         }
       }

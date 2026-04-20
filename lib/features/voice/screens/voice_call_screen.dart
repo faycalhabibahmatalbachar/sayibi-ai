@@ -305,7 +305,15 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
 
       try {
         final ttsAudioPath = await notifier.synthesizeSpeech(aiResponse);
-        await _playAiResponse(ttsAudioPath);
+        if (ttsAudioPath == voiceEngineTtsSentinel) {
+          if (!mounted) return;
+          setState(() => _currentState = VoiceCallState.idle);
+          _bubbleAnimController.stop();
+          _glowAnimController.stop();
+          Future<void>.delayed(const Duration(milliseconds: 450), _startListening);
+        } else {
+          await _playAiResponse(ttsAudioPath);
+        }
       } catch (_) {
         // Robustesse: ne pas casser toute la session si seul le TTS échoue.
         if (!mounted) return;
@@ -436,20 +444,42 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     );
   }
 
+  VoiceCallState _visualCallState(VoiceState vs) {
+    if (_currentState == VoiceCallState.error) return VoiceCallState.error;
+    if (_isSpeaking || vs.isSpeaking) return VoiceCallState.speaking;
+    return _currentState;
+  }
+
   @override
   Widget build(BuildContext context) {
     final voiceState = ref.watch(voiceProvider);
+    final visual = _visualCallState(voiceState);
+
+    ref.listen<VoiceState>(voiceProvider, (prev, next) {
+      if (!mounted) return;
+      final wasSpeaking = prev?.isSpeaking ?? false;
+      if (next.isSpeaking && !wasSpeaking) {
+        _bubbleAnimController.repeat();
+        if (!_glowAnimController.isAnimating) {
+          _glowAnimController.repeat(reverse: true);
+        }
+      } else if (!next.isSpeaking && wasSpeaking && !_isSpeaking) {
+        _bubbleAnimController.stop();
+        _glowAnimController.stop();
+      }
+    });
+
     return Scaffold(
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 600),
         curve: Curves.easeInOutCubic,
-        decoration: BoxDecoration(gradient: _getBackgroundGradient()),
+        decoration: BoxDecoration(gradient: _getBackgroundGradient(visual)),
         child: SafeArea(
           child: Stack(
             children: [
               AnimatedBuilder(
                 animation: _glowAnimController,
-                builder: (context, _) => _buildBackgroundParticles(),
+                builder: (context, _) => _buildBackgroundParticles(visual),
               ),
               Column(
                 children: [
@@ -460,28 +490,27 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
                   ),
                   const Spacer(),
                   AIVoiceBubble(
-                    state: _currentState,
-                    isSpeaking: _isSpeaking,
+                    state: visual,
+                    isSpeaking: _isSpeaking || voiceState.isSpeaking,
                     animController: _bubbleAnimController,
                     glowController: _glowAnimController,
                   ),
                   const SizedBox(height: 40),
-                  if (_currentState == VoiceCallState.listening ||
-                      _currentState == VoiceCallState.speaking)
+                  if (visual == VoiceCallState.listening || visual == VoiceCallState.speaking)
                     WaveformVisualizer(
-                      isActive: _isRecording || _isSpeaking,
-                      color: _getStateColor(),
+                      isActive: _isRecording || _isSpeaking || voiceState.isSpeaking,
+                      color: _getStateColor(visual),
                       animController: _waveformAnimController,
                     ),
                   const SizedBox(height: 20),
                   TranscriptionDisplay(
                     userText: _userTranscription,
                     aiText: _aiResponse,
-                    currentState: _currentState,
+                    currentState: visual,
                   ),
                   const Spacer(),
                   VoiceControls(
-                    currentState: _currentState,
+                    currentState: visual,
                     isMuted: _isMuted,
                     isSpeakerOn: _isSpeakerOn,
                     isRecording: _isRecording,
@@ -494,7 +523,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
                   const SizedBox(height: 30),
                 ],
               ),
-              _buildStatusIndicator(),
+              _buildStatusIndicator(visual),
             ],
           ),
         ),
@@ -638,26 +667,26 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     );
   }
 
-  Widget _buildStatusIndicator() {
+  Widget _buildStatusIndicator(VoiceCallState visual) {
     return Positioned(
       top: 16,
       left: 24,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: _getStateColor().withOpacity(0.2),
+          color: _getStateColor(visual).withOpacity(0.2),
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: _getStateColor().withOpacity(0.5), width: 1.5),
+          border: Border.all(color: _getStateColor(visual).withOpacity(0.5), width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_getStateIcon(), color: _getStateColor(), size: 16),
+            Icon(_getStateIcon(visual), color: _getStateColor(visual), size: 16),
             const SizedBox(width: 8),
             Text(
-              _getStateLabel(),
+              _getStateLabel(visual),
               style: TextStyle(
-                color: _getStateColor(),
+                color: _getStateColor(visual),
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.5,
@@ -669,19 +698,19 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     );
   }
 
-  Widget _buildBackgroundParticles() {
+  Widget _buildBackgroundParticles(VoiceCallState visual) {
     return Positioned.fill(
       child: CustomPaint(
         painter: ParticlesPainter(
           animationValue: _glowAnimController.value,
-          color: _getStateColor(),
+          color: _getStateColor(visual),
         ),
       ),
     );
   }
 
-  LinearGradient _getBackgroundGradient() {
-    switch (_currentState) {
+  LinearGradient _getBackgroundGradient(VoiceCallState visual) {
+    switch (visual) {
       case VoiceCallState.listening:
         return const LinearGradient(
           begin: Alignment.topLeft,
@@ -711,8 +740,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     }
   }
 
-  Color _getStateColor() {
-    switch (_currentState) {
+  Color _getStateColor(VoiceCallState visual) {
+    switch (visual) {
       case VoiceCallState.listening:
         return AppColors.info;
       case VoiceCallState.processing:
@@ -726,8 +755,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     }
   }
 
-  IconData _getStateIcon() {
-    switch (_currentState) {
+  IconData _getStateIcon(VoiceCallState visual) {
+    switch (visual) {
       case VoiceCallState.listening:
         return Icons.mic_rounded;
       case VoiceCallState.processing:
@@ -741,8 +770,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     }
   }
 
-  String _getStateLabel() {
-    switch (_currentState) {
+  String _getStateLabel(VoiceCallState visual) {
+    switch (visual) {
       case VoiceCallState.listening:
         return 'ECOUTE';
       case VoiceCallState.processing:

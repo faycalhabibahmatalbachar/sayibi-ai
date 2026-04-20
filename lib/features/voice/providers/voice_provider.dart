@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +22,9 @@ const Map<String, String> sayibiVoiceOptions = {
 };
 
 const String _voicePrefKey = 'sayibi_voice_selected';
+
+/// Retourné par [synthesizeSpeech] lorsque la lecture a été faite par le TTS intégré à l’appareil (repli ElevenLabs).
+const String voiceEngineTtsSentinel = '__engine_tts__';
 
 class VoiceState {
   const VoiceState({
@@ -207,7 +212,7 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
 
   Future<String> synthesizeSpeech(String text) async {
     try {
-      state = state.copyWith(isSpeaking: true, ui: VoiceUiState.speaking, error: null);
+      state = state.copyWith(error: null);
       final dio = _ref.read(apiServiceProvider).client;
       final currentVoice = state.selectedVoice;
 
@@ -236,12 +241,16 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
 
       // Priorité: récupérer directement les bytes audio puis stocker localement.
       final fromRawCurrent = await fetchRawAudio(currentVoice);
-      if (fromRawCurrent != null) return fromRawCurrent;
+      if (fromRawCurrent != null) {
+        state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
+        return fromRawCurrent;
+      }
 
       // Fallback voix: si la voix choisie échoue (404/format), tenter Ahmat.
       if (currentVoice != 'ahmat') {
         final fromRawFallback = await fetchRawAudio('ahmat');
         if (fromRawFallback != null) {
+          state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
           return fromRawFallback;
         }
       }
@@ -260,21 +269,33 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       }
       final fromApi = data['audio_path'] as String?;
       if (fromApi != null && fromApi.isNotEmpty) {
+        state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
         return fromApi;
       }
       final fallback = body['audio_path'] as String?;
-      if (fallback != null && fallback.isNotEmpty) return fallback;
+      if (fallback != null && fallback.isNotEmpty) {
+        state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
+        return fallback;
+      }
       throw Exception('Chemin audio manquant');
     } catch (e) {
+      if (!kIsWeb && text.trim().isNotEmpty) {
+        final ok = await _speakWithDeviceTts(text);
+        if (ok) {
+          state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle, error: null);
+          return voiceEngineTtsSentinel;
+        }
+      }
       var pretty = httpErrorMessage(e);
       final raw = e.toString();
       if (raw.contains('ELEVENLABS_API_KEY invalide') ||
           raw.contains('401 Unauthorized') ||
+          raw.contains('refusé la clé') ||
           raw.contains('clé ElevenLabs invalide')) {
         pretty =
-            'Serveur TTS: clé ElevenLabs invalide/expirée. '
-            'Le backend doit mettre à jour ELEVENLABS_API_KEY '
-            'ou activer KOKORO_TTS_URL.';
+            'Serveur ElevenLabs a refusé la clé (souvent: mauvaise valeur dans Render, espaces ou mauvaise clé). '
+            'Recopiez la clé depuis Profil ElevenLabs → API Key. '
+            'Sur mobile, une voix de secours locale est utilisée si possible.';
       } else if (raw.contains('Aucun service TTS opérationnel')) {
         pretty =
             'Serveur TTS indisponible. Vérifiez ELEVENLABS_API_KEY '
@@ -286,6 +307,23 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
         error: 'Erreur synthese vocale: $pretty',
       );
       rethrow;
+    }
+  }
+
+  /// Repli sans ElevenLabs : moteur TTS du téléphone (Android / iOS).
+  Future<bool> _speakWithDeviceTts(String text) async {
+    try {
+      final tts = FlutterTts();
+      await tts.setLanguage('fr-FR');
+      await tts.setSpeechRate(0.46);
+      await tts.awaitSpeakCompletion(true);
+      state = state.copyWith(isSpeaking: true, ui: VoiceUiState.speaking, error: null);
+      await tts.speak(text);
+      state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
+      return true;
+    } catch (_) {
+      state = state.copyWith(isSpeaking: false, ui: VoiceUiState.idle);
+      return false;
     }
   }
 
