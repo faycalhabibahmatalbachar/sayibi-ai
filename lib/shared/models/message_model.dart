@@ -13,7 +13,7 @@ class MessageModel {
   final String content;
   final DateTime? createdAt;
 
-  /// Libellé modèle (Sayibi ou backend).
+  /// Libellé modèle (ChadGpt ou backend).
   final String? modelUsed;
 
   final List<String>? imageUrls;

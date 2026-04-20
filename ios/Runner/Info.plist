@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Sayibi Flutter</string>
+	<string>ChadGpt</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -46,6 +46,6 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSContactsUsageDescription</key>
-	<string>SAYIBI a besoin d’accéder aux contacts pour retrouver un destinataire lorsque vous le demandez.</string>
+	<string>ChadGpt a besoin d’accéder aux contacts pour retrouver un destinataire lorsque vous le demandez.</string>
 </dict>
 </plist>

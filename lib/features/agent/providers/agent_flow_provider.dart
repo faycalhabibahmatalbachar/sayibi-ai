@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/agent_api_service.dart';
 import '../../../core/services/agent_memory_service.dart';
 import '../../../core/services/contacts_local_service.dart';
+import '../../../core/services/local_file_service.dart';
 import '../../../core/services/local_media_service.dart';
 import '../../../core/services/sim_sms_service.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -134,31 +135,6 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     state = state.copyWith(controlMode: mode);
   }
 
-  bool _isSensitiveActionType(String type) {
-    const sensitive = {
-      'send_sms',
-      'send_sms_scheduled',
-      'make_call',
-      'delete_alarm',
-      'delete_event',
-      'send_email',
-      'send_whatsapp',
-      'open_local_media',
-    };
-    return sensitive.contains(type);
-  }
-
-  bool _canAutoExecutePending(Map<String, dynamic> data) {
-    final payload = data['payload'];
-    if (payload is! Map) return false;
-    final p = Map<String, dynamic>.from(payload);
-    final actionType = (p['action_type'] ?? p['type'] ?? '').toString();
-    if (actionType.isEmpty) return false;
-    if (state.controlMode == AssistantControlMode.safe) return false;
-    if (_isSensitiveActionType(actionType)) return false;
-    return true;
-  }
-
   /// Entrée principale depuis la zone de saisie (mode actions activé).
   Future<void> submitUserMessage(String text) async {
     final t = text.trim();
@@ -243,10 +219,9 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
         pending: pend,
         contactSearchResults: crs,
         permissionState: await _permissionState(),
-        memoryContext: AgentMemoryService.buildSmsMemoryContext(
-          sessionId: sessionId,
-          remoteSmsActions: remoteSms,
-        ),
+        memoryContext:
+            '${AgentMemoryService.buildSmsMemoryContext(sessionId: sessionId, remoteSmsActions: remoteSms)}\n\n'
+            'assistant_control_mode=${state.controlMode.name}',
       );
       crs = null;
       if (data == null) return null;
@@ -308,7 +283,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       return;
     }
 
-    if (action == 'confirm_needed' && _canAutoExecutePending(data)) {
+    if (action == 'confirm_needed') {
       await _executeNative({
         ...data,
         'action': 'execute_action',
@@ -320,7 +295,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       state = state.copyWith(
         loading: false,
         clearResponse: true,
-        successHint: 'Action non sensible exécutée automatiquement.',
+        successHint: 'Action exécutée automatiquement.',
       );
       return;
     }
@@ -342,7 +317,9 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     final rootPayload = Map<String, dynamic>.from(payload);
 
     String typeFrom(Map<String, dynamic> src) =>
-        (src['action_type'] ?? src['type'] ?? '').toString().trim();
+        (src['action_type'] ?? src['type'] ?? src['action'] ?? '')
+            .toString()
+            .trim();
 
     // Certains retours "execute_action" encapsulent l'action cible dans payload.pending / payload.payload.
     var effective = rootPayload;
@@ -351,8 +328,18 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       final pending = Map<String, dynamic>.from(effective['pending'] as Map);
       final pendingPayload =
           pending['payload'] is Map ? Map<String, dynamic>.from(pending['payload'] as Map) : null;
-      type = typeFrom(pendingPayload ?? pending);
-      effective = pendingPayload ?? pending;
+      final pendingType = typeFrom(pending);
+      final pendingPayloadType = pendingPayload != null ? typeFrom(pendingPayload) : '';
+      if (pendingPayload != null &&
+          pendingType.isNotEmpty &&
+          pendingPayloadType.isEmpty) {
+        // Cas fréquent: pending.action = send_sms et pending.payload contient les champs.
+        type = pendingType;
+        effective = pendingPayload;
+      } else {
+        type = pendingPayloadType.isNotEmpty ? pendingPayloadType : pendingType;
+        effective = pendingPayload ?? pending;
+      }
     }
     if (type.isEmpty && effective['payload'] is Map) {
       final nested = Map<String, dynamic>.from(effective['payload'] as Map);
@@ -360,6 +347,42 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       if (nestedType.isNotEmpty) {
         type = nestedType;
         effective = nested;
+      }
+    }
+    if (type.isEmpty && rootPayload['pending'] is Map) {
+      final topPending = Map<String, dynamic>.from(rootPayload['pending'] as Map);
+      final topType = typeFrom(topPending);
+      final topPendingPayload =
+          topPending['payload'] is Map ? Map<String, dynamic>.from(topPending['payload'] as Map) : null;
+      if (topType.isNotEmpty) {
+        type = topType;
+        effective = topPendingPayload ?? topPending;
+      }
+    }
+    if (type.isEmpty) {
+      // Fallback: certains LLM renvoient execute_action sans payload exploitable.
+      // On retente à partir du dernier pending confirm_needed conservé en state.
+      final last = state.lastResponse;
+      if (last != null && (last['action']?.toString() ?? '') == 'confirm_needed') {
+        final lastPayload = last['payload'];
+        if (lastPayload is Map) {
+          final fromLast = Map<String, dynamic>.from(lastPayload);
+          final lastType = typeFrom(fromLast);
+          if (lastType.isNotEmpty) {
+            type = lastType;
+            effective = fromLast;
+          } else if (fromLast['pending'] is Map) {
+            final nestedPending = Map<String, dynamic>.from(fromLast['pending'] as Map);
+            final nestedType = typeFrom(nestedPending);
+            final nestedPayload = nestedPending['payload'] is Map
+                ? Map<String, dynamic>.from(nestedPending['payload'] as Map)
+                : null;
+            if (nestedType.isNotEmpty) {
+              type = nestedType;
+              effective = nestedPayload ?? nestedPending;
+            }
+          }
+        }
       }
     }
     final p = effective;
@@ -501,7 +524,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     if (type == 'set_alarm' ||
         type == 'create_alarm' ||
         type == 'create_reminder') {
-      final title = (effective['title'] ?? effective['label'] ?? 'Alarme SAYIBI').toString().trim();
+      final title = (effective['title'] ?? effective['label'] ?? 'Alarme ChadGpt').toString().trim();
       final message = effective['message']?.toString();
       final whenRaw = (effective['scheduled_for'] ?? effective['time'] ?? '').toString();
       var when = DateTime.tryParse(whenRaw);
@@ -646,6 +669,82 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       return;
     }
 
+    if (type == 'search_local_files' || type == 'search_files') {
+      final query = (p['query'] ?? p['q'] ?? '').toString().trim();
+      final kind = (p['kind'] ?? p['file_type'] ?? 'any').toString().toLowerCase();
+      if (query.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Précise le fichier à chercher (nom, extension, type).',
+            );
+        return;
+      }
+      await LocalFileService.refreshIndex(force: p['refresh_index'] == true);
+      final found = await LocalFileService.searchFiles(
+        query,
+        limit: 20,
+        kind: kind,
+      );
+      if (found.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Aucun fichier trouvé pour "$query".',
+            );
+        return;
+      }
+      final autoOpen =
+          p['auto_open_first'] == true ||
+          (state.controlMode == AssistantControlMode.enterprise &&
+              p['auto_open_first'] != false);
+      if (autoOpen) {
+        final first = found.first;
+        final firstPath = (first['path'] ?? '').toString();
+        if (firstPath.isNotEmpty) {
+          final open = await OpenFile.open(firstPath);
+          if (open.type.name == 'done') {
+            final firstName = (first['name'] ?? 'fichier').toString();
+            _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+                  '✅ Fichier ouvert automatiquement: $firstName',
+                  metadata: {
+                    'local_file_results': found,
+                    'local_file_query': query,
+                    'local_file_kind': kind,
+                  },
+                );
+            return;
+          }
+        }
+      }
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            'J’ai trouvé ${found.length} fichier(s) pour "$query".',
+            metadata: {
+              'local_file_results': found,
+              'local_file_query': query,
+              'local_file_kind': kind,
+            },
+          );
+      return;
+    }
+
+    if (type == 'open_local_file' || type == 'open_file') {
+      final path = (p['path'] ?? '').toString().trim();
+      if (path.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Chemin fichier manquant.',
+            );
+        return;
+      }
+      final result = await OpenFile.open(path);
+      if (result.type.name == 'done') {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '✅ Fichier ouvert.',
+            );
+      } else {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '❌ Impossible d’ouvrir ce fichier (${result.message}).',
+            );
+      }
+      return;
+    }
+
     if (type == 'open_local_media') {
       final path = (p['path'] ?? '').toString().trim();
       if (path.isEmpty) {
@@ -668,17 +767,21 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     }
 
     _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
-          '✅ Action enregistrée (${type.isEmpty ? "execute" : type}).',
+          type.isEmpty
+              ? '⚠️ Action reçue mais format inconnu: exécution locale impossible.'
+              : '✅ Action enregistrée ($type).',
         );
-  }
-
-  /// Confirmation explicite (« oui »).
-  Future<void> confirm() async {
-    await _followUp('oui, confirme');
-  }
-
-  Future<void> cancel() async {
-    await _followUp('non, annule');
+    if (type.isEmpty) {
+      await _api.logAction(
+        actionType: 'execute_action',
+        status: 'failed',
+        messagePreview: 'unknown execute payload',
+        clientMeta: {
+          'reason': 'unknown_execute_payload_shape',
+          'payload_keys': rootPayload.keys.toList(),
+        },
+      );
+    }
   }
 
   Future<void> pickContact({

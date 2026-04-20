@@ -1,7 +1,7 @@
 // Fichier modèle — remplacez par la sortie de : dart pub global activate flutterfire_cli && flutterfire configure
 //
 // Valeurs factices : l'initialisation Firebase échouera tant que vous n'aurez pas
-// exécuté `flutterfire configure` avec votre projet SAYIBI-AI.
+// exécuté `flutterfire configure` avec votre projet Firebase (ChadGpt / ex-SAYIBI-AI).
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'

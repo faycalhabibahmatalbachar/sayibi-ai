@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Réseau requis en release (API auth/chat/voice/push). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Voice call IA (record package + permission runtime). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 13+ runtime permission pour push notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- SMS : envoi depuis la carte SIM (aucun fournisseur payant côté serveur). -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <!-- Répertoire : mode agent / résolution de contacts. -->

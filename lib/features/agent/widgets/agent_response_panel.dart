@@ -104,7 +104,7 @@ class AgentResponsePanel extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Text(
                   'Décrivez une action : SMS, appel, rappel, agenda… '
-                  'Les étapes sensibles demanderont votre confirmation.',
+                  'Exécution automatique active (sans confirmation manuelle).',
                   style: TextStyle(
                     color: AppColors.darkTextSecondary,
                     fontSize: 13,
@@ -116,8 +116,6 @@ class AgentResponsePanel extends ConsumerWidget {
                 const SizedBox(height: 10),
                 _ActionBlock(
                   data: s.lastResponse!,
-                  onConfirm: notifier.confirm,
-                  onCancel: notifier.cancel,
                   onPickContact: notifier.pickContact,
                   onPickNumber: notifier.pickPhoneNumber,
                   onRequestPermissions: notifier.requestPermissions,
@@ -134,16 +132,12 @@ class AgentResponsePanel extends ConsumerWidget {
 class _ActionBlock extends StatelessWidget {
   const _ActionBlock({
     required this.data,
-    required this.onConfirm,
-    required this.onCancel,
     required this.onPickContact,
     required this.onPickNumber,
     required this.onRequestPermissions,
   });
 
   final Map<String, dynamic> data;
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
   final void Function({
     required String contactId,
     required String displayName,
@@ -293,24 +287,6 @@ class _ActionBlock extends StatelessWidget {
                 );
               },
             ),
-          ),
-        ],
-      );
-    }
-
-    if (action == 'confirm_needed') {
-      return Row(
-        children: [
-          Expanded(
-            child: FilledButton(
-              onPressed: onConfirm,
-              child: const Text('Confirmer'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: onCancel,
-            child: const Text('Annuler'),
           ),
         ],
       );

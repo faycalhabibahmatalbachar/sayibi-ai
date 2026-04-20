@@ -42,7 +42,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Text(
-                'Fichiers générés par SAYIBI et documents joints.',
+                'Fichiers générés par ChadGpt et documents joints.',
                 style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 13),
               ),
             ),

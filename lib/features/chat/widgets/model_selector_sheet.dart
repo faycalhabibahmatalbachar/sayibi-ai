@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/chat_provider.dart';
 
@@ -16,14 +15,14 @@ class ModelSelectorSheet extends ConsumerWidget {
       emoji: '⚡',
       name: 'Auto',
       tagline: 'Sélection automatique intelligente',
-      desc: 'SAYIBI choisit le meilleur modèle pour chaque question.',
+      desc: 'ChadGpt choisit le meilleur modèle pour chaque question.',
       color: Color(0xFF6C63FF),
       capabilities: ['Chat', 'Analyse', 'Code', 'Création'],
     ),
     _ModelItem(
       id: 'sayibi-reflexion',
       emoji: '🧠',
-      name: 'Sayibi Réflexion',
+      name: 'ChadGpt Réflexion',
       tagline: 'Notre modèle le plus intelligent',
       desc:
           'Raisonnement profond pour les problèmes complexes, maths, logique et analyses stratégiques.',
@@ -33,7 +32,7 @@ class ModelSelectorSheet extends ConsumerWidget {
     _ModelItem(
       id: 'sayibi-images',
       emoji: '🎨',
-      name: 'Sayibi Images',
+      name: 'ChadGpt Images',
       tagline: 'Crée des images depuis vos mots',
       desc:
           'Génération d\'images professionnelles, illustrations et visuels depuis une description texte.',
@@ -44,7 +43,7 @@ class ModelSelectorSheet extends ConsumerWidget {
     _ModelItem(
       id: 'sayibi-nadirx',
       emoji: '📊',
-      name: 'Sayibi NadirX',
+      name: 'ChadGpt NadirX',
       tagline: 'Expert analyse & documents',
       desc:
           'Analyse de contrats, factures, données financières et extraction d\'informations précises.',
@@ -54,7 +53,7 @@ class ModelSelectorSheet extends ConsumerWidget {
     _ModelItem(
       id: 'sayibi-voix',
       emoji: '🎙️',
-      name: 'Sayibi Voix',
+      name: 'ChadGpt Voix',
       tagline: 'Optimisé pour les conversations vocales',
       desc:
           'Réponses rapides et naturelles. Idéal pour l\'assistant vocal mains-libres.',
@@ -64,7 +63,7 @@ class ModelSelectorSheet extends ConsumerWidget {
     _ModelItem(
       id: 'sayibi-code',
       emoji: '💻',
-      name: 'Sayibi Code',
+      name: 'ChadGpt Code',
       tagline: 'Développeur IA expert',
       desc:
           'Génération, débogage et explication de code en +50 langages de programmation.',
@@ -74,7 +73,7 @@ class ModelSelectorSheet extends ConsumerWidget {
     _ModelItem(
       id: 'sayibi-creation',
       emoji: '✨',
-      name: 'Sayibi Création',
+      name: 'ChadGpt Création',
       tagline: 'CV, Lettres & Rapports Pro',
       desc:
           'Génère des documents professionnels avec design, mise en page et formatage avancé.',
@@ -111,14 +110,14 @@ class ModelSelectorSheet extends ConsumerWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Row(
                 children: [
-                  Text(
-                    AppStrings.chatChooseModel,
-                    style: const TextStyle(
+                  const Text(
+                    'Modèles',
+                    style: TextStyle(
                       color: AppColors.darkTextPrimary,
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -130,21 +129,10 @@ class ModelSelectorSheet extends ConsumerWidget {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                AppStrings.chatModelSubtitle,
-                style: TextStyle(
-                  color: AppColors.darkTextTertiary.withValues(alpha: 0.95),
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
             Expanded(
               child: ListView.builder(
                 controller: controller,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 itemCount: _models.length,
                 itemBuilder: (context, i) {
                   final model = _models[i];
@@ -177,12 +165,12 @@ class ModelSelectorSheet extends ConsumerWidget {
       onTap: () {
         HapticFeedback.lightImpact();
         ref.read(chatProvider.notifier).selectModel(model.id);
-        Navigator.pop(context);
+        Navigator.pop(context, model.id);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(18),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
               ? model.color.withValues(alpha: 0.1)
@@ -194,23 +182,24 @@ class ModelSelectorSheet extends ConsumerWidget {
           ),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: model.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
-                child: Text(model.emoji, style: const TextStyle(fontSize: 26)),
+                child: Text(model.emoji, style: const TextStyle(fontSize: 22)),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     children: [
@@ -219,24 +208,24 @@ class ModelSelectorSheet extends ConsumerWidget {
                           model.name,
                           style: TextStyle(
                             color: isSelected ? model.color : AppColors.darkTextPrimary,
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
                       if (model.isNew) ...[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
                             color: AppColors.accent.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text(
-                            AppStrings.chatNew,
+                          child: const Text(
+                            'NEW',
                             style: TextStyle(
                               color: AppColors.accent,
-                              fontSize: 9,
+                              fontSize: 8,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.5,
                             ),
@@ -245,55 +234,23 @@ class ModelSelectorSheet extends ConsumerWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     model.tagline,
                     style: TextStyle(
                       color: isSelected
                           ? model.color.withValues(alpha: 0.85)
                           : AppColors.darkTextSecondary,
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    model.desc,
-                    style: const TextStyle(
-                      color: AppColors.darkTextTertiary,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: model.capabilities.map((cap) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: model.color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: model.color.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: Text(
-                          cap,
-                          style: TextStyle(
-                            color: model.color,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: isSelected

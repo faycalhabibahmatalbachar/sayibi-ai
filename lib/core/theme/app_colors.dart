@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// SAYIBI AI Design System — Colors
+/// ChadGpt Design System — Colors
 /// Palette inspirée de : Linear, Notion, Apple Design
 class AppColors {
   AppColors._();
 
   // ==================== PRIMARY COLORS ====================
 
-  /// Violet profond — couleur principale SAYIBI
+  /// Violet profond — couleur principale ChadGpt
   static const primary = Color(0xFF6C63FF);
   static const primaryLight = Color(0xFF9F93FF);
   static const primaryDark = Color(0xFF4A42CC);

@@ -2,7 +2,7 @@
 class AppStrings {
   AppStrings._();
 
-  static const appName = 'SAYIBI AI';
+  static const appName = 'ChadGpt';
   static const tagline = 'Votre assistant IA multilingue';
 
   static const navChat = 'Chat';

@@ -28,7 +28,7 @@ class SayibiApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     return MaterialApp.router(
-      title: 'SAYIBI AI',
+      title: 'ChadGpt',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -54,9 +56,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final Set<String> _deviceSmsHandledKeys = <String>{};
 
   List<Map<String, dynamic>> _sessionRows = [];
+  Timer? _modelHintTimer;
+  String? _modelHint;
 
   @override
   void dispose() {
+    _modelHintTimer?.cancel();
     _scrollController.dispose();
     _textController.dispose();
     super.dispose();
@@ -161,6 +166,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     Navigator.pop(context);
     ref.read(agentFlowProvider.notifier).resetSession();
     await ref.read(chatProvider.notifier).loadSession(sessionId);
+  }
+
+  Future<void> _deleteSessionFromDrawer(String sessionId) async {
+    try {
+      final dio = ref.read(apiServiceProvider).client;
+      await dio.delete<dynamic>(ApiConstants.chatSessionDelete(sessionId));
+      await _refreshSessionList();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conversation supprimée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(httpErrorMessage(e))),
+      );
+    }
   }
 
   void _showPlusMenu() {
@@ -269,14 +291,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
-  void _showModelSelector() {
+  Future<void> _showModelSelector() async {
     HapticFeedback.lightImpact();
-    showModalBottomSheet<void>(
+    final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const ModelSelectorSheet(),
     );
+    if (!mounted || selected == null || selected.isEmpty) return;
+    final summary = _modelSummary(selected);
+    if (summary == null) return;
+    setState(() => _modelHint = summary);
+    _modelHintTimer?.cancel();
+    _modelHintTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _modelHint = null);
+    });
   }
 
   @override
@@ -308,7 +339,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               const Padding(
                 padding: EdgeInsets.all(20),
                 child: Text(
-                  'SAYIBI',
+                  'ChadGpt',
                   style: TextStyle(
                     color: AppColors.darkTextPrimary,
                     fontSize: 22,
@@ -371,6 +402,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: AppColors.darkTextPrimary, fontSize: 14),
                             ),
+                            trailing: id.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Supprimer',
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: AppColors.darkTextTertiary,
+                                      size: 18,
+                                    ),
+                                    onPressed: () => _deleteSessionFromDrawer(id),
+                                  ),
                             onTap: id.isEmpty ? null : () => _openSession(id),
                           );
                         },
@@ -401,6 +443,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   agentModeOn)
                 _buildActiveFeaturesBanner(agentModeOn),
               if (agentModeOn) const AgentResponsePanel(),
+              if (_modelHint != null) _buildModelHint(_modelHint!),
               Expanded(
                 child: messages.isEmpty ? _buildEmptyState() : _buildMessagesList(messages, isLoading),
               ),
@@ -612,6 +655,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildModelHint(String text) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.info.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.info),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.darkTextSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 180.ms).slideY(begin: -0.15, duration: 180.ms);
   }
 
   Widget _buildEmptyState() {
@@ -927,6 +999,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       'excel': 'Construction du tableau Excel\navec formules…',
     };
     return map[type] ?? 'Traitement en cours…';
+  }
+
+  String? _modelSummary(String id) {
+    const map = {
+      'auto': 'Auto: choisit le meilleur modèle selon votre demande.',
+      'sayibi-reflexion': 'Réflexion: analyse avancée, logique et questions complexes.',
+      'sayibi-images': 'Images: génération de visuels à partir de texte.',
+      'sayibi-nadirx': 'NadirX: analyse de documents, OCR et données.',
+      'sayibi-voix': 'Voix: optimisé pour le dialogue vocal rapide.',
+      'sayibi-code': 'Code: génération, correction et explication de code.',
+      'sayibi-creation': 'Création: CV, lettres, rapports et Excel.',
+    };
+    return map[id];
   }
 
   void _sendMessage(String text) {

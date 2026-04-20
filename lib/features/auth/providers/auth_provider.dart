@@ -1,13 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
-import '../../../core/services/notification_service.dart';
-import '../../../core/utils/http_error_message.dart';
-import '../../../core/utils/strip_url_hash.dart';
 import '../../../core/services/agent_api_service.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/notification_service.dart';
+import '../../../core/utils/http_error_message.dart';
+import '../../../core/utils/strip_url_hash.dart';
 
 final authTokenStoreProvider = Provider<AuthTokenStore>((ref) => AuthTokenStore());
 
@@ -24,27 +26,50 @@ class AuthState {
     this.loading = false,
     this.error,
     this.authenticated = false,
+    this.sessionReady = false,
   });
 
   final bool loading;
   final String? error;
   final bool authenticated;
+  final bool sessionReady;
 
-  AuthState copyWith({bool? loading, String? error, bool? authenticated}) {
+  AuthState copyWith({
+    bool? loading,
+    String? error,
+    bool? authenticated,
+    bool? sessionReady,
+  }) {
     return AuthState(
       loading: loading ?? this.loading,
       error: error,
       authenticated: authenticated ?? this.authenticated,
+      sessionReady: sessionReady ?? this.sessionReady,
     );
   }
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(this._ref) : super(const AuthState()) {
-    _restore();
+    unawaited(_bootstrap());
   }
 
   final Ref _ref;
+  final Completer<void> _bootstrapCompleter = Completer<void>();
+
+  /// Attend la fin de la restauration des jetons (splash / routes).
+  Future<void> waitUntilSessionReady() => _bootstrapCompleter.future;
+
+  Future<void> _bootstrap() async {
+    try {
+      await _restore();
+    } finally {
+      state = state.copyWith(sessionReady: true);
+      if (!_bootstrapCompleter.isCompleted) {
+        _bootstrapCompleter.complete();
+      }
+    }
+  }
 
   Future<void> _restore() async {
     final t = await _ref.read(authTokenStoreProvider).getAccess();
@@ -69,7 +94,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> login(String email, String password) async {
+  Future<bool> login(
+    String email,
+    String password, {
+    bool rememberMe = true,
+  }) async {
     state = state.copyWith(loading: true, error: null);
     try {
       final dio = _ref.read(apiServiceProvider).client;
@@ -80,10 +109,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final data = res.data as Map<String, dynamic>;
       if (data['success'] == true && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
-        await _ref.read(authTokenStoreProvider).saveTokens(
-              access: d['access_token'] as String,
-              refresh: d['refresh_token'] as String,
-            );
+        final store = _ref.read(authTokenStoreProvider);
+        await store.saveTokens(
+          access: d['access_token'] as String,
+          refresh: d['refresh_token'] as String,
+          persistSession: rememberMe,
+        );
+        if (rememberMe && email.trim().isNotEmpty) {
+          await store.saveLastEmail(email.trim());
+        }
         await _syncFcmToken();
         state = state.copyWith(loading: false, authenticated: true);
         return true;
@@ -96,7 +130,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> register(String email, String password, String name) async {
+  Future<bool> register(
+    String email,
+    String password,
+    String name, {
+    bool rememberMe = true,
+  }) async {
     state = state.copyWith(loading: true, error: null);
     try {
       final dio = _ref.read(apiServiceProvider).client;
@@ -108,10 +147,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (data['success'] == true && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
         if (d['access_token'] != null && d['refresh_token'] != null) {
-          await _ref.read(authTokenStoreProvider).saveTokens(
-                access: d['access_token'] as String,
-                refresh: d['refresh_token'] as String,
-              );
+          final store = _ref.read(authTokenStoreProvider);
+          await store.saveTokens(
+            access: d['access_token'] as String,
+            refresh: d['refresh_token'] as String,
+            persistSession: rememberMe,
+          );
+          if (rememberMe && email.trim().isNotEmpty) {
+            await store.saveLastEmail(email.trim());
+          }
           await _syncFcmToken();
           state = state.copyWith(loading: false, authenticated: true);
           return true;
@@ -127,7 +171,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _ref.read(authTokenStoreProvider).clear();
-    state = const AuthState(authenticated: false);
+    state = const AuthState(sessionReady: true);
   }
 
   /// Après clic sur le lien de confirmation Supabase (`…#access_token=…`).
@@ -155,6 +199,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await _ref.read(authTokenStoreProvider).saveTokens(
               access: d['access_token'] as String,
               refresh: d['refresh_token'] as String,
+              persistSession: true,
             );
         await _syncFcmToken();
         state = state.copyWith(loading: false, authenticated: true);

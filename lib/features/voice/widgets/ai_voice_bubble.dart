@@ -24,7 +24,7 @@ class AIVoiceBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Bulle vocale SAYIBI',
+      label: 'Bulle vocale ChadGpt',
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -233,7 +233,7 @@ class AIVoiceBubble extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              'SAYIBI AI',
+              'ChadGpt',
               style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ],

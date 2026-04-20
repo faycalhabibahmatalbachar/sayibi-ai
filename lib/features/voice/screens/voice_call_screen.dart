@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -133,7 +134,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
           style: TextStyle(color: AppColors.darkTextPrimary),
         ),
         content: const Text(
-          'SAYIBI a besoin d\'acceder au microphone pour les conversations vocales.',
+          'ChadGpt a besoin d\'acceder au microphone pour les conversations vocales.',
           style: TextStyle(color: AppColors.darkTextSecondary),
         ),
         actions: [
@@ -302,14 +303,43 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       if (!mounted) return;
       setState(() => _aiResponse = aiResponse);
 
-      final ttsAudioPath = await notifier.synthesizeSpeech(aiResponse);
-      await _playAiResponse(ttsAudioPath);
+      try {
+        final ttsAudioPath = await notifier.synthesizeSpeech(aiResponse);
+        await _playAiResponse(ttsAudioPath);
+      } catch (_) {
+        // Robustesse: ne pas casser toute la session si seul le TTS échoue.
+        if (!mounted) return;
+        final err = ref.read(voiceProvider).error ?? 'Erreur synthese vocale.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$err Réponse affichée en texte, écoute relancée.',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() {
+          _isSpeaking = false;
+          _currentState = VoiceCallState.idle;
+        });
+        Future<void>.delayed(const Duration(milliseconds: 550), _startListening);
+      }
       _retryCount = 0;
     } catch (e) {
       final stateError = ref.read(voiceProvider).error;
       _handleError(stateError != null && stateError.isNotEmpty
           ? stateError
           : 'Erreur traitement IA: $e');
+    } finally {
+      try {
+        final f = File(audioPath);
+        if (await f.exists()) {
+          await f.delete();
+        }
+      } catch (_) {}
     }
   }
 
@@ -318,7 +348,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       _currentState = VoiceCallState.speaking;
       _isSpeaking = true;
     });
-    SemanticsService.announce('SAYIBI repond', TextDirection.ltr);
+    SemanticsService.announce('ChadGpt repond', TextDirection.ltr);
 
     _bubbleAnimController.repeat();
     if (!_glowAnimController.isAnimating) {
@@ -718,7 +748,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       case VoiceCallState.processing:
         return 'ANALYSE';
       case VoiceCallState.speaking:
-        return 'SAYIBI PARLE';
+        return 'CHADGPT PARLE';
       case VoiceCallState.error:
         return 'ERREUR';
       default:

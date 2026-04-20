@@ -80,7 +80,7 @@ class MessageBubble extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(
+            child: SelectableText(
               message.content,
               style: const TextStyle(
                 color: Colors.white,
@@ -269,6 +269,10 @@ class MessageBubble extends StatelessWidget {
                     if (message.metadata?['local_media_results'] != null) ...[
                       const SizedBox(height: 12),
                       _buildLocalMediaResults(message.metadata!['local_media_results']),
+                    ],
+                    if (message.metadata?['local_file_results'] != null) ...[
+                      const SizedBox(height: 12),
+                      _buildLocalFileResults(message.metadata!['local_file_results']),
                     ],
                     if (_deviceSmsBarVisible()) ...[
                       const SizedBox(height: 12),
@@ -764,6 +768,132 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  Widget _buildLocalFileResults(dynamic raw) {
+    final list = raw is List ? raw : const [];
+    if (list.isEmpty) return const SizedBox.shrink();
+    final entries = list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.description_outlined, size: 14, color: AppColors.darkTextTertiary),
+            SizedBox(width: 6),
+            Text(
+              'Fichiers trouvés',
+              style: TextStyle(
+                color: AppColors.darkTextTertiary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...entries.take(12).map((item) {
+          final path = (item['path'] ?? '').toString();
+          final name = (item['name'] ?? '').toString();
+          final kind = (item['kind'] ?? 'file').toString();
+          final score = (item['score'] is num) ? (item['score'] as num).toDouble() : null;
+          final ext = (item['ext'] ?? '').toString();
+          final size = (item['size'] is num) ? (item['size'] as num).toInt() : 0;
+          final canOpen = !kIsWeb && path.isNotEmpty && File(path).existsSync();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.darkBackground,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.darkBorder),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: canOpen ? () async => OpenFile.open(path) : null,
+              child: Row(
+                children: [
+                  Icon(_iconForFileKind(kind), color: AppColors.primary, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name.isEmpty ? 'Fichier' : name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.darkTextPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${kind.toUpperCase()} ${ext.isNotEmpty ? '· $ext' : ''} · ${_formatBytes(size)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.darkTextTertiary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (score != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'S ${score.toStringAsFixed(1)}',
+                        style: const TextStyle(color: AppColors.primary, fontSize: 10),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  IconData _iconForFileKind(String kind) {
+    switch (kind.toLowerCase()) {
+      case 'image':
+        return Icons.image_outlined;
+      case 'video':
+        return Icons.videocam_outlined;
+      case 'audio':
+        return Icons.audiotrack_outlined;
+      case 'document':
+        return Icons.description_outlined;
+      case 'archive':
+        return Icons.archive_outlined;
+      default:
+        return Icons.insert_drive_file_outlined;
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var size = bytes.toDouble();
+    var idx = 0;
+    while (size >= 1024 && idx < units.length - 1) {
+      size /= 1024;
+      idx++;
+    }
+    final fixed = size >= 10 ? size.toStringAsFixed(0) : size.toStringAsFixed(1);
+    return '$fixed ${units[idx]}';
+  }
+
   String _formatDuration(int sec) {
     if (sec <= 0) return '00:00';
     final m = sec ~/ 60;
@@ -836,7 +966,7 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-/// Curseur clignotant type ChatGPT pendant le flux SSE.
+/// Curseur clignotant pendant le flux SSE.
 class _StreamingCursor extends StatefulWidget {
   const _StreamingCursor();
 

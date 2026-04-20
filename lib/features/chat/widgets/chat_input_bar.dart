@@ -243,6 +243,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
     }
     if (widget.documentMode) return 'Posez une question sur le document…';
     if (widget.webSearchEnabled) return 'Que voulez-vous rechercher ?';
-    return 'Posez une question à SAYIBI…';
+    return 'Posez une question à ChadGpt…';
   }
 }

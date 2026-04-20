@@ -209,36 +209,46 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
     try {
       state = state.copyWith(isSpeaking: true, ui: VoiceUiState.speaking, error: null);
       final dio = _ref.read(apiServiceProvider).client;
+      final currentVoice = state.selectedVoice;
 
-      // Priorité: récupérer directement les bytes audio puis stocker localement.
-      try {
-        final raw = await dio.post<List<int>>(
-          ApiConstants.voiceSynthesize,
-          queryParameters: const {'raw': true},
-          data: {'text': text, 'language': 'fr', 'voice': state.selectedVoice},
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = raw.data;
-        if (bytes != null && bytes.isNotEmpty) {
+      Future<String?> fetchRawAudio(String voiceKey) async {
+        try {
+          final raw = await dio.post<List<int>>(
+            ApiConstants.voiceSynthesize,
+            queryParameters: const {'raw': true},
+            data: {'text': text, 'language': 'fr', 'voice': voiceKey},
+            options: Options(responseType: ResponseType.bytes),
+          );
+          final bytes = raw.data;
+          if (bytes == null || bytes.isEmpty) return null;
           final dir = await getTemporaryDirectory();
           final file = File(
             p.join(dir.path, 'sayibi_tts_${DateTime.now().millisecondsSinceEpoch}.mp3'),
           );
           await file.writeAsBytes(bytes, flush: true);
           return file.path;
+        } on DioException catch (_) {
+          return null;
+        } catch (_) {
+          return null;
         }
-      } on DioException catch (e) {
-        // Erreurs auth/upstream: inutile de retenter une seconde fois.
-        final status = e.response?.statusCode ?? 0;
-        if (status == 401 || status == 403 || status >= 500) {
-          rethrow;
+      }
+
+      // Priorité: récupérer directement les bytes audio puis stocker localement.
+      final fromRawCurrent = await fetchRawAudio(currentVoice);
+      if (fromRawCurrent != null) return fromRawCurrent;
+
+      // Fallback voix: si la voix choisie échoue (404/format), tenter Ahmat.
+      if (currentVoice != 'ahmat') {
+        final fromRawFallback = await fetchRawAudio('ahmat');
+        if (fromRawFallback != null) {
+          return fromRawFallback;
         }
-        // Fallback JSON ci-dessous pour les cas de format/réponse.
       }
 
       final response = await dio.post<Map<String, dynamic>>(
         ApiConstants.voiceSynthesize,
-        data: {'text': text, 'language': 'fr', 'voice': state.selectedVoice},
+        data: {'text': text, 'language': 'fr', 'voice': currentVoice},
       );
       final body = response.data;
       if (body == null) {
@@ -256,10 +266,24 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       if (fallback != null && fallback.isNotEmpty) return fallback;
       throw Exception('Chemin audio manquant');
     } catch (e) {
+      var pretty = httpErrorMessage(e);
+      final raw = e.toString();
+      if (raw.contains('ELEVENLABS_API_KEY invalide') ||
+          raw.contains('401 Unauthorized') ||
+          raw.contains('clé ElevenLabs invalide')) {
+        pretty =
+            'Serveur TTS: clé ElevenLabs invalide/expirée. '
+            'Le backend doit mettre à jour ELEVENLABS_API_KEY '
+            'ou activer KOKORO_TTS_URL.';
+      } else if (raw.contains('Aucun service TTS opérationnel')) {
+        pretty =
+            'Serveur TTS indisponible. Vérifiez ELEVENLABS_API_KEY '
+            'ou configurez KOKORO_TTS_URL.';
+      }
       state = state.copyWith(
         isSpeaking: false,
         ui: VoiceUiState.idle,
-        error: 'Erreur synthese vocale: ${httpErrorMessage(e)}',
+        error: 'Erreur synthese vocale: $pretty',
       );
       rethrow;
     }

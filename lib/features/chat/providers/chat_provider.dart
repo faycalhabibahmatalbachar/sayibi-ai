@@ -23,7 +23,7 @@ class ChatState {
   final String? error;
   final String? sessionId;
 
-  /// Identifiant modèle Sayibi ou legacy (groq, gemini, mistral, auto).
+  /// Identifiant modèle ChadGpt (sayibi-*) ou legacy (groq, gemini, mistral, auto).
   final String modelPreference;
 
   final bool isGeneratingFile;
@@ -80,12 +80,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final m = state.modelPreference;
     const map = {
       'auto': 'Auto',
-      'sayibi-reflexion': 'Sayibi · Réflexion',
-      'sayibi-images': 'Sayibi · Images',
-      'sayibi-nadirx': 'Sayibi · NadirX',
-      'sayibi-voix': 'Sayibi · Voix',
-      'sayibi-code': 'Sayibi · Code',
-      'sayibi-creation': 'Sayibi · Création',
+      'sayibi-reflexion': 'ChadGpt · Réflexion',
+      'sayibi-images': 'ChadGpt · Images',
+      'sayibi-nadirx': 'ChadGpt · NadirX',
+      'sayibi-voix': 'ChadGpt · Voix',
+      'sayibi-code': 'ChadGpt · Code',
+      'sayibi-creation': 'ChadGpt · Création',
       'groq': 'Groq',
       'gemini': 'Gemini',
       'mistral': 'Mistral',
@@ -304,7 +304,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           role: 'assistant',
           content: text,
           metadata: metadata,
-          modelUsed: 'Sayibi · Actions',
+          modelUsed: 'ChadGpt · Actions',
         ),
       ],
     );

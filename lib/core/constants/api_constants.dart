@@ -19,7 +19,7 @@ class ApiConstants {
   static const String authLogin = '/auth/login';
   static const String authRegister = '/auth/register';
   static const String authRefresh = '/auth/refresh';
-  /// Échange du JWT Supabase (#access_token) contre les jetons SAYIBI après confirmation e-mail.
+  /// Échange du JWT Supabase (#access_token) contre les jetons applicatifs après confirmation e-mail.
   static const String authSupabaseSession = '/auth/supabase-session';
 
   /// Même base que [PUBLIC_APP_URL] côté backend (ex. https://sayibi-web.onrender.com).

@@ -20,6 +20,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   void initState() {
     super.initState();
     Future<void>(() async {
+      await ref.read(authProvider.notifier).waitUntilSessionReady();
+      if (!mounted) return;
+
       final redirect = await ref.read(authProvider.notifier).tryCompleteSupabaseEmailRedirect();
       if (!mounted) return;
       if (redirect == true) {
@@ -30,6 +33,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         context.go('/login');
         return;
       }
+
+      if (ref.read(authProvider).authenticated) {
+        context.go('/main');
+        return;
+      }
+
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) return;
       final p = await SharedPreferences.getInstance();

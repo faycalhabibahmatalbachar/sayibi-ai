@@ -37,7 +37,7 @@ class TypingIndicatorWidget extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            'SAYIBI…',
+            'ChadGpt…',
             style: TextStyle(
               color: AppColors.darkTextTertiary.withValues(alpha: 0.9),
               fontSize: 13,
