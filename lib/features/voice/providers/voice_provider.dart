@@ -227,8 +227,13 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
           await file.writeAsBytes(bytes, flush: true);
           return file.path;
         }
-      } catch (_) {
-        // Fallback JSON ci-dessous.
+      } on DioException catch (e) {
+        // Erreurs auth/upstream: inutile de retenter une seconde fois.
+        final status = e.response?.statusCode ?? 0;
+        if (status == 401 || status == 403 || status >= 500) {
+          rethrow;
+        }
+        // Fallback JSON ci-dessous pour les cas de format/réponse.
       }
 
       final response = await dio.post<Map<String, dynamic>>(

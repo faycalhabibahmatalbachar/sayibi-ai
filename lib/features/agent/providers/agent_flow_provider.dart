@@ -339,14 +339,41 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
           );
       return;
     }
-    final p = Map<String, dynamic>.from(payload);
-    final type = (p['action_type'] ?? p['type'] ?? '').toString();
+    final rootPayload = Map<String, dynamic>.from(payload);
+
+    String typeFrom(Map<String, dynamic> src) =>
+        (src['action_type'] ?? src['type'] ?? '').toString().trim();
+
+    // Certains retours "execute_action" encapsulent l'action cible dans payload.pending / payload.payload.
+    var effective = rootPayload;
+    var type = typeFrom(effective);
+    if (type.isEmpty && effective['pending'] is Map) {
+      final pending = Map<String, dynamic>.from(effective['pending'] as Map);
+      final pendingPayload =
+          pending['payload'] is Map ? Map<String, dynamic>.from(pending['payload'] as Map) : null;
+      type = typeFrom(pendingPayload ?? pending);
+      effective = pendingPayload ?? pending;
+    }
+    if (type.isEmpty && effective['payload'] is Map) {
+      final nested = Map<String, dynamic>.from(effective['payload'] as Map);
+      final nestedType = typeFrom(nested);
+      if (nestedType.isNotEmpty) {
+        type = nestedType;
+        effective = nested;
+      }
+    }
+    final p = effective;
 
     if (type == 'send_sms' || type == 'send_sms_scheduled') {
-      final rawTo = p['phone_number']?.toString() ?? '';
+      final rawTo =
+          effective['phone_number']?.toString() ??
+          effective['to_e164']?.toString() ??
+          effective['to']?.toString() ??
+          '';
       final to = SimSmsService.normalizePhone(rawTo);
-      var body = p['message']?.toString() ?? '';
-      if (body.isEmpty) body = p['message_generated']?.toString() ?? '';
+      var body = effective['message']?.toString() ?? '';
+      if (body.isEmpty) body = effective['message_generated']?.toString() ?? '';
+      if (body.isEmpty) body = effective['body']?.toString() ?? '';
       body = body.trim();
       if (to.length < 4 || body.isEmpty) {
         _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
@@ -358,12 +385,12 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       final draft = await _api.createSmsDraft(
         toE164: to,
         body: body,
-        contactIdentityId: p['contact_identity_id']?.toString(),
+        contactIdentityId: effective['contact_identity_id']?.toString(),
         requestId: requestId,
         clientMeta: {
           'from': 'agent_flow',
           'action_type': type,
-          'contact_name': p['contact_name']?.toString(),
+          'contact_name': effective['contact_name']?.toString(),
         },
       );
       final smsId = draft?['id']?.toString();
@@ -380,13 +407,14 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
           body: body,
           sent: true,
           usedSimDirect: r.usedSimDirect,
-          contactId: p['contact_id']?.toString(),
-          contactName: p['contact_name']?.toString() ?? p['display_name']?.toString(),
+          contactId: effective['contact_id']?.toString(),
+          contactName:
+              effective['contact_name']?.toString() ?? effective['display_name']?.toString(),
           sessionId: _ref.read(chatProvider).sessionId,
         );
         await _api.logAction(
           actionType: 'send_sms',
-          contactId: p['contact_id']?.toString(),
+          contactId: effective['contact_id']?.toString(),
           phoneMasked: masked,
           messagePreview: body.length > 120 ? '${body.substring(0, 120)}…' : body,
           confidence: (data['confidence'] is num)
@@ -412,8 +440,9 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
           body: body,
           sent: false,
           usedSimDirect: false,
-          contactId: p['contact_id']?.toString(),
-          contactName: p['contact_name']?.toString() ?? p['display_name']?.toString(),
+          contactId: effective['contact_id']?.toString(),
+          contactName:
+              effective['contact_name']?.toString() ?? effective['display_name']?.toString(),
           sessionId: _ref.read(chatProvider).sessionId,
         );
         _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
@@ -431,7 +460,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     }
 
     if (type == 'make_call') {
-      final rawTo = p['phone_number']?.toString() ?? '';
+      final rawTo = effective['phone_number']?.toString() ?? effective['to']?.toString() ?? '';
       final digits = rawTo.replaceAll(RegExp(r'[^\d+]'), '');
       final to = digits.startsWith('+') ? digits : '+$digits';
       if (to.length < 4) {
@@ -452,7 +481,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       if (launched) {
         await _api.logAction(
           actionType: 'make_call',
-          contactId: p['contact_id']?.toString(),
+          contactId: effective['contact_id']?.toString(),
           phoneMasked: to.length > 6 ? '${to.substring(0, 4)} ••• •• ${to.substring(to.length - 2)}' : '•••',
           confidence: (data['confidence'] is num)
               ? (data['confidence'] as num).toDouble()
@@ -472,13 +501,13 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     if (type == 'set_alarm' ||
         type == 'create_alarm' ||
         type == 'create_reminder') {
-      final title = (p['title'] ?? p['label'] ?? 'Alarme SAYIBI').toString().trim();
-      final message = p['message']?.toString();
-      final whenRaw = (p['scheduled_for'] ?? p['time'] ?? '').toString();
+      final title = (effective['title'] ?? effective['label'] ?? 'Alarme SAYIBI').toString().trim();
+      final message = effective['message']?.toString();
+      final whenRaw = (effective['scheduled_for'] ?? effective['time'] ?? '').toString();
       var when = DateTime.tryParse(whenRaw);
       when ??= DateTime.now().add(const Duration(minutes: 5));
-      final timezone = (p['timezone'] ?? 'Africa/Ndjamena').toString();
-      final repeatRule = p['repeat_rule']?.toString();
+      final timezone = (effective['timezone'] ?? 'Africa/Ndjamena').toString();
+      final repeatRule = effective['repeat_rule']?.toString();
 
       final created = await _api.createAlarm(
         title: title,
