@@ -408,6 +408,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
 
   @override
   Widget build(BuildContext context) {
+    final voiceState = ref.watch(voiceProvider);
     return Scaffold(
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 600),
@@ -423,7 +424,10 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
               Column(
                 children: [
                   const SizedBox(height: 20),
-                  _buildHeader(),
+                  _buildHeader(
+                    selectedVoice: voiceState.selectedVoice,
+                    onVoiceChanged: (v) => ref.read(voiceProvider.notifier).setSelectedVoice(v),
+                  ),
                   const Spacer(),
                   AIVoiceBubble(
                     state: _currentState,
@@ -468,7 +472,10 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader({
+    required String selectedVoice,
+    required ValueChanged<String> onVoiceChanged,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
@@ -512,36 +519,91 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
               ),
             ),
           ),
-          Semantics(
-            label: 'Terminer l appel',
-            button: true,
-            child: GestureDetector(
-              onTap: _endCall,
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.error,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.error.withOpacity(0.5),
-                      blurRadius: 16,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 24),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildVoiceSelector(
+                selectedVoice: selectedVoice,
+                onVoiceChanged: onVoiceChanged,
               ),
-            )
-                .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                .scale(
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.05, 1.05),
-                  duration: 1500.ms,
+              const SizedBox(height: 10),
+              Semantics(
+                label: 'Terminer l appel',
+                button: true,
+                child: GestureDetector(
+                  onTap: _endCall,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.error.withOpacity(0.5),
+                          blurRadius: 16,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 24),
+                  ),
                 ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .scale(
+                    begin: const Offset(1, 1),
+                    end: const Offset(1.05, 1.05),
+                    duration: 1500.ms,
+                  ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceSelector({
+    required String selectedVoice,
+    required ValueChanged<String> onVoiceChanged,
+  }) {
+    final currentLabel = sayibiVoiceOptions[selectedVoice] ?? 'Voix';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.28),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.22), width: 1),
+      ),
+      child: PopupMenuButton<String>(
+        padding: EdgeInsets.zero,
+        tooltip: 'Choisir la voix',
+        onSelected: onVoiceChanged,
+        itemBuilder: (_) => sayibiVoiceOptions.entries
+            .map(
+              (e) => PopupMenuItem<String>(
+                value: e.key,
+                child: Text(e.value),
+              ),
+            )
+            .toList(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.record_voice_over_rounded, color: Colors.white, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              currentLabel,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.arrow_drop_down_rounded, color: Colors.white, size: 18),
+          ],
+        ),
       ),
     );
   }

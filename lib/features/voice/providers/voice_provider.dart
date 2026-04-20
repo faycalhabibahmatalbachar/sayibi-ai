@@ -4,12 +4,22 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/http_error_message.dart';
 import '../../auth/providers/auth_provider.dart';
 
 enum VoiceUiState { idle, listening, processing, speaking }
+
+const Map<String, String> sayibiVoiceOptions = {
+  'ahmat': 'Ahmat',
+  'brahim': 'Brahim',
+  'mariam': 'Mariam',
+  'hassane': 'Hassane',
+};
+
+const String _voicePrefKey = 'sayibi_voice_selected';
 
 class VoiceState {
   const VoiceState({
@@ -20,6 +30,7 @@ class VoiceState {
     this.transcript = '',
     this.assistantReply = '',
     this.callActive = false,
+    this.selectedVoice = 'ahmat',
   });
 
   final bool isRecording;
@@ -29,6 +40,7 @@ class VoiceState {
   final String transcript;
   final String assistantReply;
   final bool callActive;
+  final String selectedVoice;
 
   static const Object _unset = Object();
 
@@ -40,6 +52,7 @@ class VoiceState {
     String? transcript,
     String? assistantReply,
     bool? callActive,
+    String? selectedVoice,
   }) {
     return VoiceState(
       isRecording: isRecording ?? this.isRecording,
@@ -49,15 +62,38 @@ class VoiceState {
       transcript: transcript ?? this.transcript,
       assistantReply: assistantReply ?? this.assistantReply,
       callActive: callActive ?? this.callActive,
+      selectedVoice: selectedVoice ?? this.selectedVoice,
     );
   }
 }
 
 class VoiceNotifier extends StateNotifier<VoiceState> {
-  VoiceNotifier(this._ref) : super(const VoiceState());
+  VoiceNotifier(this._ref) : super(const VoiceState()) {
+    _loadSelectedVoice();
+  }
 
   final Ref _ref;
   String? _sessionId;
+
+  Future<void> _loadSelectedVoice() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = (prefs.getString(_voicePrefKey) ?? '').trim().toLowerCase();
+      if (sayibiVoiceOptions.containsKey(v)) {
+        state = state.copyWith(selectedVoice: v);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setSelectedVoice(String voiceKey) async {
+    final v = voiceKey.trim().toLowerCase();
+    if (!sayibiVoiceOptions.containsKey(v)) return;
+    state = state.copyWith(selectedVoice: v);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_voicePrefKey, v);
+    } catch (_) {}
+  }
 
   Future<T> _withRetry<T>(
     Future<T> Function() run, {
@@ -179,7 +215,7 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
         final raw = await dio.post<List<int>>(
           ApiConstants.voiceSynthesize,
           queryParameters: const {'raw': true},
-          data: {'text': text, 'language': 'fr', 'voice': 'default'},
+          data: {'text': text, 'language': 'fr', 'voice': state.selectedVoice},
           options: Options(responseType: ResponseType.bytes),
         );
         final bytes = raw.data;
@@ -197,7 +233,7 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
 
       final response = await dio.post<Map<String, dynamic>>(
         ApiConstants.voiceSynthesize,
-        data: {'text': text, 'language': 'fr', 'voice': 'default'},
+        data: {'text': text, 'language': 'fr', 'voice': state.selectedVoice},
       );
       final body = response.data;
       if (body == null) {

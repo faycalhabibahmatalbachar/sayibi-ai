@@ -4,7 +4,7 @@
     <!-- Répertoire : mode agent / résolution de contacts. -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <application
-        android:label="sayibi_flutter"
+        android:label="ChadGpt"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
