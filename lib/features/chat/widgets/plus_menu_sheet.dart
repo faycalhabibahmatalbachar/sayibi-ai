@@ -16,10 +16,12 @@ class PlusMenuSheet extends StatefulWidget {
     required this.createType,
     required this.agentModeEnabled,
     required this.onWebSearchToggled,
+    required this.onDocumentUploadRequested,
     required this.onDocumentUploaded,
     required this.onDocumentRemoved,
     required this.onCreateToggled,
     required this.onAgentModeToggled,
+    required this.onAlarmsRequested,
   });
 
   final bool webSearchEnabled;
@@ -29,10 +31,12 @@ class PlusMenuSheet extends StatefulWidget {
   final String createType;
   final bool agentModeEnabled;
   final void Function(bool value) onWebSearchToggled;
+  final Future<String?> Function(PlatformFile file) onDocumentUploadRequested;
   final void Function(String docId, String docName) onDocumentUploaded;
   final VoidCallback onDocumentRemoved;
   final void Function(bool enabled, String type) onCreateToggled;
   final void Function(bool value) onAgentModeToggled;
+  final VoidCallback onAlarmsRequested;
 
   @override
   State<PlusMenuSheet> createState() => _PlusMenuSheetState();
@@ -84,6 +88,8 @@ class _PlusMenuSheetState extends State<PlusMenuSheet> {
               _buildDocumentOption(),
               const SizedBox(height: 12),
               _buildCreateOption(),
+              const SizedBox(height: 12),
+              _buildAlarmOption(),
               if (_showCreateOptions) ...[
                 const SizedBox(height: 16),
                 _buildCreateSubOptions(),
@@ -223,6 +229,41 @@ class _PlusMenuSheetState extends State<PlusMenuSheet> {
         ),
       ),
     ).animate().fadeIn(delay: 150.ms, duration: 300.ms).slideX(
+          begin: -0.1,
+          duration: 300.ms,
+          curve: Curves.easeOut,
+        );
+  }
+
+  Widget _buildAlarmOption() {
+    return _buildOptionTile(
+      icon: Icons.alarm_rounded,
+      emoji: '⏰',
+      title: 'Alarmes',
+      subtitle: 'Créer, modifier, supprimer et voir les alarmes',
+      isActive: false,
+      activeColor: AppColors.success,
+      trailing: ElevatedButton(
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          Navigator.pop(context);
+          widget.onAlarmsRequested();
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.success.withValues(alpha: 0.18),
+          foregroundColor: AppColors.success,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: const Text(
+          'Ouvrir',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+    ).animate().fadeIn(delay: 175.ms, duration: 300.ms).slideX(
           begin: -0.1,
           duration: 300.ms,
           curve: Curves.easeOut,
@@ -474,7 +515,9 @@ class _PlusMenuSheetState extends State<PlusMenuSheet> {
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
       final name = file.name;
-      widget.onDocumentUploaded('doc_${file.name}', name);
+      final uploadedDocId = await widget.onDocumentUploadRequested(file);
+      if (uploadedDocId == null || uploadedDocId.isEmpty) return;
+      widget.onDocumentUploaded(uploadedDocId, name);
       if (mounted) Navigator.pop(context);
     }
   }

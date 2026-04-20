@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../../core/utils/sse_stream.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../shared/models/message_model.dart';
@@ -56,25 +57,7 @@ class ChatState {
 }
 
 String _userFacingChatError(Object e) {
-  if (e is DioException) {
-    final data = e.response?.data;
-    if (data is Map && data['message'] != null) {
-      return data['message'].toString();
-    }
-    final code = e.response?.statusCode;
-    if (code == 401 || code == 403) {
-      return 'Session expirée ou accès refusé. Reconnectez-vous.';
-    }
-    if (code == null || code >= 500) {
-      return 'Serveur temporairement indisponible. Réessayez dans un instant.';
-    }
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout) {
-      return 'Délai dépassé. Vérifiez la connexion.';
-    }
-    return e.message ?? e.toString();
-  }
-  return e.toString();
+  return httpErrorMessage(e, fallback: e.toString());
 }
 
 class ChatNotifier extends StateNotifier<ChatState> {

@@ -86,4 +86,35 @@ class ContactsLocalService {
       ],
     };
   }
+
+  static Future<List<Map<String, dynamic>>> exportContactsSnapshot({
+    int maxItems = 300,
+  }) async {
+    if (kIsWeb) return [];
+    if (!await ensurePermission()) return [];
+    final all = await FlutterContacts.getContacts(
+      withProperties: true,
+      withPhoto: false,
+    );
+    final out = <Map<String, dynamic>>[];
+    for (final c in all) {
+      if (c.displayName.trim().isEmpty) continue;
+      final phones = [
+        for (var i = 0; i < c.phones.length; i++)
+          {
+            'number': c.phones[i].number,
+            'label': c.phones[i].label.name,
+            'is_primary': i == 0,
+          }
+      ];
+      if (phones.isEmpty) continue;
+      out.add({
+        'contact_id': c.id,
+        'display_name': c.displayName,
+        'phone_numbers': phones,
+      });
+      if (out.length >= maxItems) break;
+    }
+    return out;
+  }
 }

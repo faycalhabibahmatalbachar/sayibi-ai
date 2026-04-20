@@ -47,6 +47,10 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
 
   final AudioRecorder _audioRecorder = AudioRecorder();
   bool _isRecording = false;
+  StreamSubscription<Amplitude>? _amplitudeSub;
+  Timer? _vadTimer;
+  DateTime? _lastVoiceAt;
+  bool _speechDetected = false;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isSpeaking = false;
@@ -74,6 +78,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
   @override
   void dispose() {
     _callTimer?.cancel();
+    _vadTimer?.cancel();
+    _amplitudeSub?.cancel();
     _playerCompleteSub?.cancel();
     unawaited(_audioRecorder.dispose());
     unawaited(_audioPlayer.dispose());
@@ -174,6 +180,20 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
   }
 
   Future<void> _startListening() async {
+    if (_isSpeaking) {
+      // Barge-in: l'utilisateur reprend la main immédiatement.
+      await _audioPlayer.stop();
+      _playerCompleteSub?.cancel();
+      _bubbleAnimController.stop();
+      _glowAnimController.stop();
+      if (mounted) {
+        setState(() {
+          _isSpeaking = false;
+          _currentState = VoiceCallState.idle;
+        });
+      }
+    }
+
     if (!_hasMicPermission ||
         _currentState == VoiceCallState.listening ||
         _currentState == VoiceCallState.processing ||
@@ -210,7 +230,27 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
 
       if (!mounted) return;
       setState(() => _isRecording = true);
-      Future<void>.delayed(const Duration(seconds: 45), () {
+      _speechDetected = false;
+      _lastVoiceAt = DateTime.now();
+      _amplitudeSub?.cancel();
+      _amplitudeSub = _audioRecorder
+          .onAmplitudeChanged(const Duration(milliseconds: 120))
+          .listen((amp) {
+        final current = amp.current;
+        if (current > -34) {
+          _speechDetected = true;
+          _lastVoiceAt = DateTime.now();
+        }
+      });
+      _vadTimer?.cancel();
+      _vadTimer = Timer.periodic(const Duration(milliseconds: 180), (_) {
+        if (!_isRecording || !_speechDetected || _lastVoiceAt == null) return;
+        final silenceMs = DateTime.now().difference(_lastVoiceAt!).inMilliseconds;
+        if (silenceMs >= 900) {
+          unawaited(_stopRecording());
+        }
+      });
+      Future<void>.delayed(const Duration(seconds: 25), () {
         if (_isRecording) {
           unawaited(_stopRecording());
         }
@@ -222,6 +262,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
 
   Future<void> _stopRecording({bool silentTransition = false}) async {
     if (!_isRecording) return;
+    _vadTimer?.cancel();
+    _amplitudeSub?.cancel();
 
     if (!silentTransition) {
       setState(() {
@@ -293,7 +335,12 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
     });
 
     try {
-      await _audioPlayer.play(DeviceFileSource(audioPath));
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      if (audioPath.startsWith('http://') || audioPath.startsWith('https://')) {
+        await _audioPlayer.play(UrlSource(audioPath));
+      } else {
+        await _audioPlayer.play(DeviceFileSource(audioPath));
+      }
     } catch (e) {
       _handleError('Erreur lecture audio: $e');
     }

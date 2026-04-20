@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/services/notification_service.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../../core/utils/strip_url_hash.dart';
 import '../../../core/services/agent_api_service.dart';
 import '../../../core/services/api_service.dart';
@@ -48,6 +50,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final t = await _ref.read(authTokenStoreProvider).getAccess();
     if (t != null && t.isNotEmpty) {
       state = state.copyWith(authenticated: true);
+      await _syncFcmToken();
+    }
+  }
+
+  Future<void> _syncFcmToken() async {
+    try {
+      await NotificationService().init();
+      final token = NotificationService().fcmToken;
+      if (token == null || token.isEmpty) return;
+      final dio = _ref.read(apiServiceProvider).client;
+      await dio.post(
+        ApiConstants.userFcmToken,
+        data: {'token': token},
+      );
+    } catch (_) {
+      // Best effort : ne bloque jamais auth.
     }
   }
 
@@ -66,13 +84,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
               access: d['access_token'] as String,
               refresh: d['refresh_token'] as String,
             );
+        await _syncFcmToken();
         state = state.copyWith(loading: false, authenticated: true);
         return true;
       }
       state = state.copyWith(loading: false, error: data['message']?.toString());
       return false;
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: httpErrorMessage(e));
       return false;
     }
   }
@@ -93,6 +112,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
                 access: d['access_token'] as String,
                 refresh: d['refresh_token'] as String,
               );
+          await _syncFcmToken();
           state = state.copyWith(loading: false, authenticated: true);
           return true;
         }
@@ -100,7 +120,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(loading: false, error: data['message']?.toString());
       return false;
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: httpErrorMessage(e));
       return false;
     }
   }
@@ -136,6 +156,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
               access: d['access_token'] as String,
               refresh: d['refresh_token'] as String,
             );
+        await _syncFcmToken();
         state = state.copyWith(loading: false, authenticated: true);
         if (kIsWeb) {
           stripAuthFragmentFromBrowserUrl();
@@ -148,7 +169,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return false;
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: httpErrorMessage(e));
       return false;
     }
   }

@@ -79,6 +79,17 @@ class AgentResponsePanel extends ConsumerWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 6),
+              Text(
+                s.contactsSynced
+                    ? 'Ressource contacts: synchronisée'
+                    : 'Ressource contacts: non synchronisée',
+                style: TextStyle(
+                  color: s.contactsSynced ? AppColors.success : AppColors.warning,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (s.error != null) ...[
                 const SizedBox(height: 8),
                 Text(

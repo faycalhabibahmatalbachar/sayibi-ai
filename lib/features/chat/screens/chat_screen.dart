@@ -1,4 +1,6 @@
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -6,16 +8,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lottie/lottie.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/services/agent_memory_service.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/sim_sms_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/models/message_model.dart';
 import '../../../shared/widgets/animated_error_message.dart';
 import '../../../shared/widgets/glass_card.dart';
-import '../../voice/screens/voice_screen.dart';
+import '../../voice/screens/voice_call_screen.dart';
 import '../../agent/providers/agent_flow_provider.dart';
 import '../../agent/widgets/agent_response_panel.dart';
+import '../../alarm/screens/alarm_list_screen.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/message_bubble.dart';
@@ -85,6 +90,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final r = await SimSmsService.send(toE164: to, body: body);
     if (!mounted) return;
     if (r.ok && ref.read(authProvider).authenticated) {
+      await AgentMemoryService.recordSmsAction(
+        toE164: to,
+        body: body,
+        sent: true,
+        usedSimDirect: r.usedSimDirect,
+        sessionId: ref.read(chatProvider).sessionId,
+      );
       final masked = to.length > 6
           ? '${to.substring(0, to.length > 4 ? 4 : 2)} ••• •• ${to.substring(to.length - 2)}'
           : '•••';
@@ -95,7 +107,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             status: 'success',
           );
       if (!mounted) return;
+    } else {
+      await AgentMemoryService.recordSmsAction(
+        toE164: to,
+        body: body,
+        sent: false,
+        usedSimDirect: false,
+        sessionId: ref.read(chatProvider).sessionId,
+      );
     }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -157,6 +178,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         createType: _createType,
         agentModeEnabled: ref.watch(agentFlowProvider).modeEnabled,
         onWebSearchToggled: (v) => setState(() => _webSearchEnabled = v),
+        onDocumentUploadRequested: _uploadDocument,
         onDocumentUploaded: (docId, docName) {
           setState(() {
             _documentMode = true;
@@ -181,9 +203,70 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           ref.read(agentFlowProvider.notifier).setMode(v);
           setState(() {});
         },
+        onAlarmsRequested: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const AlarmListScreen()),
+          );
+        },
       ),
       ),
     );
+  }
+
+  Future<String?> _uploadDocument(PlatformFile file) async {
+    if (!ref.read(authProvider).authenticated) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connectez-vous pour envoyer un document.')),
+      );
+      return null;
+    }
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lecture du fichier impossible.')),
+      );
+      return null;
+    }
+    try {
+      final dio = ref.read(apiServiceProvider).client;
+      final multipart = MultipartFile.fromBytes(
+        bytes,
+        filename: file.name,
+      );
+      final form = FormData.fromMap({'file': multipart});
+      final res = await dio.post<dynamic>(
+        ApiConstants.documentsUpload,
+        data: form,
+      );
+      final body = res.data;
+      if (body is Map && body['success'] == true && body['data'] is Map) {
+        final data = body['data'] as Map;
+        final docId = data['doc_id']?.toString();
+        if (docId != null && docId.isNotEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Document ${file.name} indexé.')),
+            );
+          }
+          return docId;
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(body is Map ? (body['message']?.toString() ?? 'Upload échoué') : 'Upload échoué')),
+        );
+      }
+      return null;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(httpErrorMessage(e))),
+        );
+      }
+      return null;
+    }
   }
 
   void _showModelSelector() {
@@ -624,6 +707,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         onTap: _showPlusMenu,
       ),
       SuggestionItem(
+        icon: '⏰',
+        title: 'Gérer Alarmes',
+        subtitle: 'Créer et modifier vos alarmes',
+        gradient: const LinearGradient(
+          colors: [Color(0xFF10B981), Color(0xFF047857)],
+        ),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const AlarmListScreen()),
+          );
+        },
+      ),
+      SuggestionItem(
         icon: '🎨',
         title: 'Générer Image',
         subtitle: 'Crée une image depuis texte',
@@ -883,13 +979,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   void _startVoiceRecording() {
     HapticFeedback.heavyImpact();
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => const SizedBox(
-        height: 420,
-        child: VoiceScreen(),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const VoiceCallScreen(),
+        fullscreenDialog: true,
       ),
     );
   }

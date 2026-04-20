@@ -36,6 +36,8 @@ class ApiConstants {
 
   static const String voiceTranscribe = '/voice/transcribe';
   static const String voiceSynthesize = '/voice/synthesize';
+  static const String imageHealth = '/image/health';
+  static const String alarms = '/alarms';
 
   static const String documentsUpload = '/documents/upload';
   static const String documentsAsk = '/documents/ask';
@@ -50,9 +52,17 @@ class ApiConstants {
   static const String userFiles = '/user/files';
   static const String userFcmToken = '/user/fcm-token';
   static const String userNotifyTest = '/user/notify-test';
+  static const String userNotifyContextual = '/user/notify-contextual';
 
   /// Mode agent (JSON structuré : intentions, confirmation, ambiguïtés).
   static const String agentTurn = '/agent/turn';
   static const String agentLog = '/agent/log';
   static const String agentContactResolution = '/agent/contact-resolution';
+  static const String agentMemorySummary = '/agent/memory-summary';
+  static const String agentSmsDraft = '/agent/actions/sms/draft';
+  static const String agentSmsConfirm = '/agent/actions/sms/confirm';
+  static const String agentSmsExecute = '/agent/actions/sms/execute';
+  static const String agentSmsList = '/agent/actions/sms';
+  static const String agentContactsSync = '/agent/actions/contacts/sync';
+  static const String agentContactsSearch = '/agent/actions/contacts/search';
 }

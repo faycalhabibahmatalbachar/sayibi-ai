@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../auth/providers/auth_provider.dart';
 
 class ProfileState {
@@ -100,7 +101,7 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
         files: _dataIfOk(f),
       );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: httpErrorMessage(e));
     }
   }
 
@@ -139,7 +140,7 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
       );
       return false;
     } catch (e) {
-      state = state.copyWith(saving: false, error: e.toString());
+      state = state.copyWith(saving: false, error: httpErrorMessage(e));
       return false;
     }
   }
@@ -166,8 +167,9 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
       state = state.copyWith(notifySending: false, error: msg ?? e.message);
       return msg ?? e.message;
     } catch (e) {
-      state = state.copyWith(notifySending: false, error: e.toString());
-      return e.toString();
+      final msg = httpErrorMessage(e);
+      state = state.copyWith(notifySending: false, error: msg);
+      return msg;
     }
   }
 }

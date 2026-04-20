@@ -10,12 +10,26 @@ import 'package:url_launcher/url_launcher.dart';
 class SimSmsService {
   SimSmsService._();
 
+  static DateTime? _lastSendAt;
+  static String? _lastFingerprint;
+
   /// Corps utilisable en SMS (retire le markdown le plus courant).
   static String plainBodyFromAssistantText(String raw) {
     var s = raw.trim();
-    s = s.replaceAll(RegExp(r'^```[\s\S]*?```', multiLine: true), '');
+    s = s.replaceAll(RegExp(r'```[\s\S]*?```', multiLine: true), '');
     s = s.replaceAll(RegExp(r'[*_`#]'), '');
     return s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static String normalizePhone(String raw) {
+    final clean = raw.replaceAll(RegExp(r'[^\d+]'), '');
+    if (clean.startsWith('+')) return clean;
+    return '+$clean';
+  }
+
+  static bool isValidPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 8 && digits.length <= 15;
   }
 
   static Future<SimSmsResult> send({
@@ -26,6 +40,17 @@ class SimSmsService {
     if (bodyTrim.isEmpty) {
       return SimSmsResult.failure('Message vide.');
     }
+    final normalized = normalizePhone(toE164);
+    if (!isValidPhone(normalized)) {
+      return SimSmsResult.failure('Numéro invalide.');
+    }
+    final fp = '$normalized|$bodyTrim';
+    if (_lastFingerprint == fp &&
+        _lastSendAt != null &&
+        DateTime.now().difference(_lastSendAt!) < const Duration(seconds: 8)) {
+      return SimSmsResult.failure('Envoi ignoré: doublon détecté.');
+    }
+
     if (kIsWeb) {
       return SimSmsResult.failure(
         'Le navigateur ne peut pas accéder à la carte SIM. Utilisez l’application sur Android.',
@@ -39,6 +64,11 @@ class SimSmsService {
     }
 
     final perm = await Permission.sms.request();
+    if (perm.isPermanentlyDenied) {
+      return SimSmsResult.failure(
+        'Permission SMS bloquée. Ouvrez les paramètres pour l’activer.',
+      );
+    }
     if (!perm.isGranted) {
       return SimSmsResult.failure(
         'Permission SMS refusée. Activez-la dans les paramètres de l’application.',
@@ -47,15 +77,27 @@ class SimSmsService {
 
     try {
       final telephony = Telephony.instance;
-      final dest = toE164.replaceAll(RegExp(r'[^\d+]'), '');
       await telephony.sendSms(
-        to: dest.startsWith('+') ? dest.substring(1) : dest,
+        to: normalized.replaceFirst('+', ''),
         message: bodyTrim,
       );
+      _lastSendAt = DateTime.now();
+      _lastFingerprint = fp;
       return SimSmsResult.ok();
     } on PlatformException catch (e) {
+      // Fallback robustesse: ouvrir le composeur SMS avec message pré-rempli.
+      final fallback = await _openSmsComposer(
+        toE164: normalized,
+        body: bodyTrim,
+      );
+      if (fallback.ok) return fallback;
       return SimSmsResult.failure(e.message ?? 'Envoi SMS impossible.');
     } catch (e) {
+      final fallback = await _openSmsComposer(
+        toE164: normalized,
+        body: bodyTrim,
+      );
+      if (fallback.ok) return fallback;
       return SimSmsResult.failure(e.toString());
     }
   }
@@ -64,8 +106,16 @@ class SimSmsService {
     required String toE164,
     required String body,
   }) async {
-    final digits = toE164.replaceAll(RegExp(r'[^\d+]'), '');
+    final digits = normalizePhone(toE164).replaceAll(RegExp(r'[^\d+]'), '');
     final path = digits.startsWith('+') ? digits : '+$digits';
+    return _openSmsComposer(toE164: path, body: body);
+  }
+
+  static Future<SimSmsResult> _openSmsComposer({
+    required String toE164,
+    required String body,
+  }) async {
+    final path = normalizePhone(toE164);
     final uri = Uri(
       scheme: 'sms',
       path: path,

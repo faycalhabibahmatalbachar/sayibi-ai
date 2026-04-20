@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/agent_api_service.dart';
+import '../../../core/services/agent_memory_service.dart';
 import '../../../core/services/contacts_local_service.dart';
 import '../../../core/services/sim_sms_service.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -18,6 +22,8 @@ class AgentFlowState {
     this.lastResponse,
     this.anchorMessage,
     this.successHint,
+    this.contactsSynced = false,
+    this.lastContactsSyncAt,
   });
 
   final bool modeEnabled;
@@ -32,6 +38,8 @@ class AgentFlowState {
 
   /// Court message de succès après exécution locale.
   final String? successHint;
+  final bool contactsSynced;
+  final DateTime? lastContactsSyncAt;
 
   AgentFlowState copyWith({
     bool? modeEnabled,
@@ -40,6 +48,8 @@ class AgentFlowState {
     Map<String, dynamic>? lastResponse,
     String? anchorMessage,
     String? successHint,
+    bool? contactsSynced,
+    DateTime? lastContactsSyncAt,
     bool clearResponse = false,
     bool clearError = false,
     bool clearSuccessHint = false,
@@ -54,6 +64,8 @@ class AgentFlowState {
       anchorMessage: anchorMessage ?? (clearResponse ? null : this.anchorMessage),
       successHint:
           clearSuccessHint ? null : (successHint ?? this.successHint),
+      contactsSynced: contactsSynced ?? this.contactsSynced,
+      lastContactsSyncAt: lastContactsSyncAt ?? this.lastContactsSyncAt,
     );
   }
 
@@ -81,7 +93,10 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     var phone = false;
     try {
       phone = await Permission.phone.isGranted;
-    } catch (_) {}
+    } catch (_) {
+      // Si la plateforme ne supporte pas ce scope, on évite de boucler sur une permission impossible.
+      phone = true;
+    }
     return {'contacts': contacts, 'sms': sms, 'phone': phone};
   }
 
@@ -90,6 +105,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       state = const AgentFlowState();
     } else {
       state = state.copyWith(modeEnabled: true, clearError: true);
+      unawaited(_syncContactsResource());
     }
   }
 
@@ -108,6 +124,28 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     if (t.isEmpty) return;
     if (!_ref.read(authProvider).authenticated) {
       state = state.copyWith(error: 'Connectez-vous pour utiliser le mode actions.');
+      return;
+    }
+
+    final sessionId = _ref.read(chatProvider).sessionId;
+    final memoryAnswer = AgentMemoryService.resolveMemoryQuestion(
+      t,
+      sessionId: sessionId,
+    );
+    if (memoryAnswer != null) {
+      _ref.read(chatProvider.notifier).appendAgentUserMessage(t);
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            memoryAnswer,
+            metadata: {
+              'memory_answer': true,
+              'memory_source': 'local_sms_history',
+            },
+          );
+      state = state.copyWith(
+        loading: false,
+        clearError: true,
+        clearResponse: true,
+      );
       return;
     }
 
@@ -149,12 +187,25 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
     List<Map<String, dynamic>>? crs;
     final anchor = message;
 
+    final sessionId = _ref.read(chatProvider).sessionId;
+    final remoteMemory = await _api.memorySummary(limit: 8);
+    final remoteSms = (remoteMemory?['sms_actions'] is List)
+        ? (remoteMemory!['sms_actions'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : <Map<String, dynamic>>[];
+
     for (var i = 0; i < 5; i++) {
       final data = await _api.agentTurn(
         message: anchor,
         pending: pend,
         contactSearchResults: crs,
         permissionState: await _permissionState(),
+        memoryContext: AgentMemoryService.buildSmsMemoryContext(
+          sessionId: sessionId,
+          remoteSmsActions: remoteSms,
+        ),
       );
       crs = null;
       if (data == null) return null;
@@ -167,6 +218,13 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
             : '';
         if (q.isEmpty) return data;
         final local = await ContactsLocalService.searchContacts(q, fuzzy: true);
+        if (local.isNotEmpty && !state.contactsSynced) {
+          await _api.syncContacts(local);
+          state = state.copyWith(
+            contactsSynced: true,
+            lastContactsSyncAt: DateTime.now(),
+          );
+        }
         crs = local;
         pend = Map<String, dynamic>.from(data);
         continue;
@@ -239,11 +297,36 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
             );
         return;
       }
+      final requestId = '${DateTime.now().millisecondsSinceEpoch}_${to.hashCode}_${body.hashCode}';
+      final draft = await _api.createSmsDraft(
+        toE164: to,
+        body: body,
+        contactIdentityId: p['contact_identity_id']?.toString(),
+        requestId: requestId,
+        clientMeta: {
+          'from': 'agent_flow',
+          'action_type': type,
+          'contact_name': p['contact_name']?.toString(),
+        },
+      );
+      final smsId = draft?['id']?.toString();
+      if (smsId != null && smsId.isNotEmpty) {
+        await _api.updateSmsStatus(smsId: smsId, status: 'confirmed');
+      }
       final r = await SimSmsService.send(toE164: to, body: body);
       final masked = to.length > 6
           ? '${to.substring(0, 4)} ••• •• ${to.substring(to.length - 2)}'
           : '•••';
       if (r.ok) {
+        await AgentMemoryService.recordSmsAction(
+          toE164: to,
+          body: body,
+          sent: true,
+          usedSimDirect: r.usedSimDirect,
+          contactId: p['contact_id']?.toString(),
+          contactName: p['contact_name']?.toString() ?? p['display_name']?.toString(),
+          sessionId: _ref.read(chatProvider).sessionId,
+        );
         await _api.logAction(
           actionType: 'send_sms',
           contactId: p['contact_id']?.toString(),
@@ -253,6 +336,9 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
               ? (data['confidence'] as num).toDouble()
               : null,
         );
+        if (smsId != null && smsId.isNotEmpty) {
+          await _api.updateSmsStatus(smsId: smsId, status: 'sent');
+        }
         state = state.copyWith(
           successHint: r.usedSimDirect
               ? 'SMS envoyé.'
@@ -264,16 +350,168 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
                   : '✅ Messages ouvert avec le texte prérempli — validez sur l’appareil.',
             );
       } else {
+        await AgentMemoryService.recordSmsAction(
+          toE164: to,
+          body: body,
+          sent: false,
+          usedSimDirect: false,
+          contactId: p['contact_id']?.toString(),
+          contactName: p['contact_name']?.toString() ?? p['display_name']?.toString(),
+          sessionId: _ref.read(chatProvider).sessionId,
+        );
         _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
               '❌ ${r.message ?? "Échec d’envoi"}',
             );
+        if (smsId != null && smsId.isNotEmpty) {
+          await _api.updateSmsStatus(
+            smsId: smsId,
+            status: 'failed',
+            errorMessage: r.message ?? 'Échec envoi local',
+          );
+        }
       }
       return;
     }
 
     if (type == 'make_call') {
+      final rawTo = p['phone_number']?.toString() ?? '';
+      final digits = rawTo.replaceAll(RegExp(r'[^\d+]'), '');
+      final to = digits.startsWith('+') ? digits : '+$digits';
+      if (to.length < 4) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Numéro invalide pour lancer l’appel.',
+            );
+        return;
+      }
+
+      if (!kIsWeb) {
+        try {
+          await Permission.phone.request();
+        } catch (_) {}
+      }
+
+      final uri = Uri(scheme: 'tel', path: to);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (launched) {
+        await _api.logAction(
+          actionType: 'make_call',
+          contactId: p['contact_id']?.toString(),
+          phoneMasked: to.length > 6 ? '${to.substring(0, 4)} ••• •• ${to.substring(to.length - 2)}' : '•••',
+          confidence: (data['confidence'] is num)
+              ? (data['confidence'] as num).toDouble()
+              : null,
+        );
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '✅ Composeur ouvert, appel en cours vers $to.',
+            );
+      } else {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '❌ Impossible d’ouvrir le composeur téléphonique.',
+            );
+      }
+      return;
+    }
+
+    if (type == 'set_alarm' ||
+        type == 'create_alarm' ||
+        type == 'create_reminder') {
+      final title = (p['title'] ?? p['label'] ?? 'Alarme SAYIBI').toString().trim();
+      final message = p['message']?.toString();
+      final whenRaw = (p['scheduled_for'] ?? p['time'] ?? '').toString();
+      var when = DateTime.tryParse(whenRaw);
+      when ??= DateTime.now().add(const Duration(minutes: 5));
+      final timezone = (p['timezone'] ?? 'Africa/Ndjamena').toString();
+      final repeatRule = p['repeat_rule']?.toString();
+
+      final created = await _api.createAlarm(
+        title: title,
+        message: message,
+        scheduledForUtc: when.toUtc(),
+        timezone: timezone,
+        repeatRule: repeatRule,
+        metadata: {'source': 'agent_execute_action'},
+      );
+      if (created == null) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '❌ Impossible de créer l’alarme pour le moment.',
+            );
+        return;
+      }
+      await _api.logAction(
+        actionType: 'set_alarm',
+        status: 'success',
+        messagePreview: title,
+        confidence: (data['confidence'] is num)
+            ? (data['confidence'] as num).toDouble()
+            : null,
+      );
+      state = state.copyWith(successHint: 'Alarme créée et synchronisée.');
       _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
-            '📞 Action appel : ouvrez le composeur téléphone depuis l’appareil (intégration à venir).',
+            '✅ Alarme programmée pour ${when.toLocal()}.',
+          );
+      return;
+    }
+
+    if (type == 'update_alarm') {
+      final alarmId = (p['alarm_id'] ?? p['id'] ?? '').toString().trim();
+      if (alarmId.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'ID alarme manquant pour mise à jour.',
+            );
+        return;
+      }
+      final whenRaw = (p['scheduled_for'] ?? p['time'] ?? '').toString();
+      final when = DateTime.tryParse(whenRaw);
+      final updated = await _api.updateAlarm(
+        alarmId,
+        title: p['title']?.toString(),
+        message: p['message']?.toString(),
+        scheduledForUtc: when?.toUtc(),
+        repeatRule: p['repeat_rule']?.toString(),
+        isEnabled: p['is_enabled'] is bool ? p['is_enabled'] as bool : null,
+      );
+      if (updated == null) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '❌ Impossible de mettre à jour cette alarme.',
+            );
+        return;
+      }
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            '✅ Alarme mise à jour.',
+          );
+      return;
+    }
+
+    if (type == 'delete_alarm') {
+      final alarmId = (p['alarm_id'] ?? p['id'] ?? '').toString().trim();
+      if (alarmId.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'ID alarme manquant pour suppression.',
+            );
+        return;
+      }
+      final ok = await _api.deleteAlarm(alarmId);
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            ok ? '✅ Alarme supprimée.' : '❌ Suppression alarme impossible.',
+          );
+      return;
+    }
+
+    if (type == 'view_alarms' || type == 'list_alarms') {
+      final rows = await _api.listAlarms();
+      if (rows.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Aucune alarme active pour le moment.',
+            );
+        return;
+      }
+      final top = rows.take(5).map((e) {
+        final title = (e['title'] ?? 'Alarme').toString();
+        final when = (e['scheduled_for'] ?? '').toString();
+        return '• $title — $when';
+      }).join('\n');
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            'Alarmes:\n$top',
           );
       return;
     }
@@ -315,7 +553,23 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
   Future<void> requestPermissions() async {
     await Permission.contacts.request();
     await Permission.sms.request();
+    try {
+      await Permission.phone.request();
+    } catch (_) {}
+    await _syncContactsResource();
     await _followUp('J’ai mis à jour les autorisations. On continue.');
+  }
+
+  Future<void> _syncContactsResource() async {
+    try {
+      final contacts = await ContactsLocalService.exportContactsSnapshot();
+      if (contacts.isEmpty) return;
+      await _api.syncContacts(contacts);
+      state = state.copyWith(
+        contactsSynced: true,
+        lastContactsSyncAt: DateTime.now(),
+      );
+    } catch (_) {}
   }
 
   Future<void> _followUp(String text) async {

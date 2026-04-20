@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/models/message_model.dart';
 
@@ -588,13 +589,15 @@ class MessageBubble extends StatelessWidget {
     final pair = icons[type] ?? ('📄', AppColors.darkTextSecondary);
     final emoji = pair.$1;
     final color = pair.$2;
-    final url = file['url']?.toString();
+    final rawDownloadUrl = file['download_url']?.toString();
+    final rawUrl = file['url']?.toString();
+    final url = _resolveGeneratedFileUrl(rawDownloadUrl ?? rawUrl);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: url != null && url.startsWith('http')
+        onTap: url != null
             ? () async {
                 final u = Uri.tryParse(url);
                 if (u != null && await canLaunchUrl(u)) {
@@ -641,6 +644,19 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _resolveGeneratedFileUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final v = raw.trim();
+    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    if (v.startsWith('/')) {
+      final host = ApiConstants.host.endsWith('/')
+          ? ApiConstants.host.substring(0, ApiConstants.host.length - 1)
+          : ApiConstants.host;
+      return '$host$v';
+    }
+    return null;
   }
 
   Widget _buildActionBtn({

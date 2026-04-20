@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 
@@ -57,8 +58,25 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = httpErrorMessage(e);
       });
+    }
+  }
+
+  Future<void> _deleteSession(String sessionId) async {
+    try {
+      final dio = ref.read(apiServiceProvider).client;
+      await dio.delete<dynamic>(ApiConstants.chatSessionDelete(sessionId));
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conversation supprimée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(httpErrorMessage(e))),
+      );
     }
   }
 
@@ -103,28 +121,44 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                           final label = (title != null && title.isNotEmpty)
                               ? title
                               : 'Sans titre';
-                          return ListTile(
-                            leading: const Icon(Icons.forum_outlined, color: AppColors.primary),
-                            title: Text(
-                              label,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: AppColors.darkTextPrimary),
+                          return Dismissible(
+                            key: ValueKey(id.isEmpty ? '$i-$label' : id),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              color: AppColors.error.withValues(alpha: 0.2),
+                              child: const Icon(Icons.delete_forever_rounded, color: AppColors.error),
                             ),
-                            subtitle: row['created_at'] != null
-                                ? Text(
-                                    row['created_at'].toString(),
-                                    style: const TextStyle(fontSize: 11, color: AppColors.darkTextTertiary),
-                                  )
-                                : null,
-                            onTap: id.isEmpty
-                                ? null
-                                : () async {
-                                    await ref.read(chatProvider.notifier).loadSession(id);
-                                    if (context.mounted) {
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
+                            confirmDismiss: (_) async => id.isNotEmpty,
+                            onDismissed: (_) {
+                              if (id.isNotEmpty) {
+                                _deleteSession(id);
+                              }
+                            },
+                            child: ListTile(
+                              leading: const Icon(Icons.forum_outlined, color: AppColors.primary),
+                              title: Text(
+                                label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: AppColors.darkTextPrimary),
+                              ),
+                              subtitle: row['created_at'] != null
+                                  ? Text(
+                                      row['created_at'].toString(),
+                                      style: const TextStyle(fontSize: 11, color: AppColors.darkTextTertiary),
+                                    )
+                                  : null,
+                              onTap: id.isEmpty
+                                  ? null
+                                  : () async {
+                                      await ref.read(chatProvider.notifier).loadSession(id);
+                                      if (context.mounted) {
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                            ),
                           );
                         },
                       ),

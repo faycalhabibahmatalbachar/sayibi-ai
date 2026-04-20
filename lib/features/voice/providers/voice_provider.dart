@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/utils/http_error_message.dart';
 import '../../auth/providers/auth_provider.dart';
 
 enum VoiceUiState { idle, listening, processing, speaking }
@@ -92,7 +93,10 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       state = state.copyWith(transcript: text.trim(), ui: VoiceUiState.idle);
       return text.trim();
     } catch (e) {
-      state = state.copyWith(error: 'Erreur transcription: $e', ui: VoiceUiState.idle);
+      state = state.copyWith(
+        error: 'Erreur transcription: ${httpErrorMessage(e)}',
+        ui: VoiceUiState.idle,
+      );
       rethrow;
     }
   }
@@ -127,7 +131,10 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       state = state.copyWith(assistantReply: aiText.trim(), ui: VoiceUiState.idle);
       return aiText.trim();
     } catch (e) {
-      state = state.copyWith(error: 'Erreur generation reponse: $e', ui: VoiceUiState.idle);
+      state = state.copyWith(
+        error: 'Erreur generation reponse: ${httpErrorMessage(e)}',
+        ui: VoiceUiState.idle,
+      );
       rethrow;
     }
   }
@@ -135,14 +142,33 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
   Future<String> synthesizeSpeech(String text) async {
     try {
       state = state.copyWith(isSpeaking: true, ui: VoiceUiState.speaking, error: null);
-      final response = await _ref.read(apiServiceProvider).client.post<Map<String, dynamic>>(
-            ApiConstants.voiceSynthesize,
-            data: {
-              'text': text,
-              'language': 'fr',
-              'voice': 'default',
-            },
+      final dio = _ref.read(apiServiceProvider).client;
+
+      // Priorité: récupérer directement les bytes audio puis stocker localement.
+      try {
+        final raw = await dio.post<List<int>>(
+          ApiConstants.voiceSynthesize,
+          queryParameters: const {'raw': true},
+          data: {'text': text, 'language': 'fr', 'voice': 'default'},
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final bytes = raw.data;
+        if (bytes != null && bytes.isNotEmpty) {
+          final dir = await getTemporaryDirectory();
+          final file = File(
+            p.join(dir.path, 'sayibi_tts_${DateTime.now().millisecondsSinceEpoch}.mp3'),
           );
+          await file.writeAsBytes(bytes, flush: true);
+          return file.path;
+        }
+      } catch (_) {
+        // Fallback JSON ci-dessous.
+      }
+
+      final response = await dio.post<Map<String, dynamic>>(
+        ApiConstants.voiceSynthesize,
+        data: {'text': text, 'language': 'fr', 'voice': 'default'},
+      );
       final body = response.data;
       if (body == null) {
         throw Exception('Reponse TTS vide');
@@ -155,18 +181,14 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       if (fromApi != null && fromApi.isNotEmpty) {
         return fromApi;
       }
-
-      // Fallback: certains backends renvoient directement un URL.
       final fallback = body['audio_path'] as String?;
-      if (fallback != null && fallback.isNotEmpty) {
-        return fallback;
-      }
+      if (fallback != null && fallback.isNotEmpty) return fallback;
       throw Exception('Chemin audio manquant');
     } catch (e) {
       state = state.copyWith(
         isSpeaking: false,
         ui: VoiceUiState.idle,
-        error: 'Erreur synthese vocale: $e',
+        error: 'Erreur synthese vocale: ${httpErrorMessage(e)}',
       );
       rethrow;
     }

@@ -4,7 +4,7 @@ import 'core/constants/app_strings.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/gallery/screens/gallery_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
-import 'features/voice/screens/voice_screen.dart';
+import 'features/voice/screens/voice_call_screen.dart';
 import 'shared/widgets/bottom_nav.dart';
 
 class MainShell extends StatefulWidget {
@@ -39,13 +39,10 @@ class _MainShellState extends State<MainShell> {
                 IconButton(
                   tooltip: 'Voix',
                   onPressed: () {
-                    showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      showDragHandle: true,
-                      builder: (context) => const SizedBox(
-                        height: 420,
-                        child: VoiceScreen(),
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const VoiceCallScreen(),
+                        fullscreenDialog: true,
                       ),
                     );
                   },
