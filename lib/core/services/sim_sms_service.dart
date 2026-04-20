@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 class SimSmsService {
   SimSmsService._();
 
+  static const String _defaultCountryCode = '235';
   static DateTime? _lastSendAt;
   static String? _lastFingerprint;
 
@@ -22,9 +23,23 @@ class SimSmsService {
   }
 
   static String normalizePhone(String raw) {
-    final clean = raw.replaceAll(RegExp(r'[^\d+]'), '');
-    if (clean.startsWith('+')) return clean;
-    return '+$clean';
+    final s = raw.trim();
+    final digits = s.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return '';
+    if (s.startsWith('+')) return '+$digits';
+    if (s.startsWith('00')) {
+      final cut = digits.length > 2 ? digits.substring(2) : '';
+      return cut.isEmpty ? '' : '+$cut';
+    }
+    // Formats locaux Tchad.
+    if (digits.length == 8) return '+$_defaultCountryCode$digits';
+    if (digits.length == 9 && digits.startsWith('0')) {
+      return '+$_defaultCountryCode${digits.substring(1)}';
+    }
+    if (digits.startsWith(_defaultCountryCode) && digits.length >= 11) {
+      return '+$digits';
+    }
+    return '+$digits';
   }
 
   static bool isValidPhone(String phone) {

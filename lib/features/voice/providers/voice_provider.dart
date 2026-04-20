@@ -59,6 +59,25 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
   final Ref _ref;
   String? _sessionId;
 
+  Future<T> _withRetry<T>(
+    Future<T> Function() run, {
+    int attempts = 2,
+    Duration delay = const Duration(milliseconds: 350),
+  }) async {
+    Object? lastError;
+    for (var i = 0; i < attempts; i++) {
+      try {
+        return await run();
+      } catch (e) {
+        lastError = e;
+        if (i < attempts - 1) {
+          await Future<void>.delayed(delay);
+        }
+      }
+    }
+    throw lastError ?? Exception('Echec apres retry');
+  }
+
   Future<String> transcribeAudio(String audioPath) async {
     try {
       state = state.copyWith(ui: VoiceUiState.processing, error: null);
@@ -68,16 +87,19 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       }
 
       final formData = FormData.fromMap({
-        'audio': await MultipartFile.fromFile(
+        // Backend attend "file" (et supporte aussi "audio" en compat).
+        'file': await MultipartFile.fromFile(
           audioPath,
           filename: p.basename(audioPath),
         ),
       });
 
-      final response = await _ref.read(apiServiceProvider).client.post<Map<String, dynamic>>(
-            ApiConstants.voiceTranscribe,
-            data: formData,
-          );
+      final response = await _withRetry(
+        () => _ref.read(apiServiceProvider).client.post<Map<String, dynamic>>(
+              ApiConstants.voiceTranscribe,
+              data: formData,
+            ),
+      );
       final body = response.data;
       if (body == null) {
         throw Exception('Reponse vide du serveur de transcription');
@@ -93,8 +115,14 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
       state = state.copyWith(transcript: text.trim(), ui: VoiceUiState.idle);
       return text.trim();
     } catch (e) {
+      var msg = httpErrorMessage(e);
+      if (e is DioException &&
+          e.response?.statusCode == 422 &&
+          (e.response?.data?.toString().contains('file') ?? false)) {
+        msg = 'Format audio invalide ou champ fichier manquant.';
+      }
       state = state.copyWith(
-        error: 'Erreur transcription: ${httpErrorMessage(e)}',
+        error: 'Erreur transcription: $msg',
         ui: VoiceUiState.idle,
       );
       rethrow;
@@ -104,14 +132,16 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
   Future<String> generateVoiceResponse(String userMessage) async {
     try {
       state = state.copyWith(ui: VoiceUiState.processing, error: null);
-      final response = await _ref.read(apiServiceProvider).client.post<Map<String, dynamic>>(
-            ApiConstants.chatMessage,
-            data: {
-              'message': userMessage,
-              'voice_mode': true,
-              if (_sessionId != null) 'session_id': _sessionId,
-            },
-          );
+      final response = await _withRetry(
+        () => _ref.read(apiServiceProvider).client.post<Map<String, dynamic>>(
+              ApiConstants.chatMessage,
+              data: {
+                'message': userMessage,
+                'voice_mode': true,
+                if (_sessionId != null) 'session_id': _sessionId,
+              },
+            ),
+      );
       final body = response.data;
       if (body == null) {
         throw Exception('Reponse vide du modele');

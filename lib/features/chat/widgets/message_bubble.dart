@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:open_file/open_file.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/api_constants.dart';
@@ -262,6 +265,10 @@ class MessageBubble extends StatelessWidget {
                       _buildGeneratedFileCard(
                         message.metadata!['generated_file'] as Map<dynamic, dynamic>,
                       ),
+                    ],
+                    if (message.metadata?['local_media_results'] != null) ...[
+                      const SizedBox(height: 12),
+                      _buildLocalMediaResults(message.metadata!['local_media_results']),
                     ],
                     if (_deviceSmsBarVisible()) ...[
                       const SizedBox(height: 12),
@@ -589,9 +596,13 @@ class MessageBubble extends StatelessWidget {
     final pair = icons[type] ?? ('📄', AppColors.darkTextSecondary);
     final emoji = pair.$1;
     final color = pair.$2;
+    final rawDownloadSigned = file['download_url_signed']?.toString();
     final rawDownloadUrl = file['download_url']?.toString();
     final rawUrl = file['url']?.toString();
-    final url = _resolveGeneratedFileUrl(rawDownloadUrl ?? rawUrl);
+    final url =
+        _resolveGeneratedFileUrl(rawDownloadSigned) ??
+        _resolveGeneratedFileUrl(rawDownloadUrl) ??
+        _resolveGeneratedFileUrl(rawUrl);
 
     return Material(
       color: Colors.transparent,
@@ -642,6 +653,145 @@ class MessageBubble extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLocalMediaResults(dynamic raw) {
+    final list = raw is List ? raw : const [];
+    if (list.isEmpty) return const SizedBox.shrink();
+    final entries = list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.folder_copy_outlined, size: 14, color: AppColors.darkTextTertiary),
+            SizedBox(width: 6),
+            Text(
+              'Fichiers locaux trouvés',
+              style: TextStyle(
+                color: AppColors.darkTextTertiary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+            childAspectRatio: 1,
+          ),
+          itemCount: entries.length.clamp(0, 12),
+          itemBuilder: (_, i) {
+            final item = entries[i];
+            final path = (item['path'] ?? '').toString();
+            final type = (item['type'] ?? 'image').toString();
+            final title = (item['title'] ?? '').toString();
+            final score = (item['score'] is num) ? (item['score'] as num).toDouble() : null;
+            final duration = (item['duration_sec'] is num) ? (item['duration_sec'] as num).toInt() : 0;
+            final canLoad = !kIsWeb && path.isNotEmpty && File(path).existsSync();
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Material(
+                color: AppColors.darkBackground,
+                child: InkWell(
+                  onTap: canLoad
+                      ? () async {
+                          await OpenFile.open(path);
+                        }
+                      : null,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: canLoad && type == 'image'
+                            ? Image.file(
+                                File(path),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _localMediaFallback(type, title),
+                              )
+                            : _localMediaFallback(type, title),
+                      ),
+                      if (type == 'video')
+                        Positioned(
+                          right: 4,
+                          bottom: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _formatDuration(duration),
+                              style: const TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ),
+                        ),
+                      if (score != null)
+                        Positioned(
+                          left: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.75),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'S ${score.toStringAsFixed(1)}',
+                              style: const TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(int sec) {
+    if (sec <= 0) return '00:00';
+    final m = sec ~/ 60;
+    final s = sec % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Widget _localMediaFallback(String type, String title) {
+    final icon = type == 'video' ? Icons.videocam_outlined : Icons.image_outlined;
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: AppColors.darkTextSecondary, size: 22),
+          const SizedBox(height: 4),
+          Text(
+            title.isEmpty ? type : title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.darkTextTertiary,
+              fontSize: 10,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -292,8 +292,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
   }
 
   Future<void> _processAudio(String audioPath) async {
+    final notifier = ref.read(voiceProvider.notifier);
     try {
-      final notifier = ref.read(voiceProvider.notifier);
       final transcription = await notifier.transcribeAudio(audioPath);
       if (!mounted) return;
       setState(() => _userTranscription = transcription);
@@ -306,7 +306,10 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen>
       await _playAiResponse(ttsAudioPath);
       _retryCount = 0;
     } catch (e) {
-      _handleError('Erreur traitement IA: $e');
+      final stateError = ref.read(voiceProvider).error;
+      _handleError(stateError != null && stateError.isNotEmpty
+          ? stateError
+          : 'Erreur traitement IA: $e');
     }
   }
 

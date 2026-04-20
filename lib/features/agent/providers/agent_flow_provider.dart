@@ -3,15 +3,23 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/agent_api_service.dart';
 import '../../../core/services/agent_memory_service.dart';
 import '../../../core/services/contacts_local_service.dart';
+import '../../../core/services/local_media_service.dart';
 import '../../../core/services/sim_sms_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../chat/providers/chat_provider.dart';
+
+enum AssistantControlMode {
+  safe,
+  enterprise,
+  hybrid,
+}
 
 /// État du flux agent (NLU JSON + actions locales).
 class AgentFlowState {
@@ -24,6 +32,7 @@ class AgentFlowState {
     this.successHint,
     this.contactsSynced = false,
     this.lastContactsSyncAt,
+    this.controlMode = AssistantControlMode.hybrid,
   });
 
   final bool modeEnabled;
@@ -40,6 +49,7 @@ class AgentFlowState {
   final String? successHint;
   final bool contactsSynced;
   final DateTime? lastContactsSyncAt;
+  final AssistantControlMode controlMode;
 
   AgentFlowState copyWith({
     bool? modeEnabled,
@@ -50,6 +60,7 @@ class AgentFlowState {
     String? successHint,
     bool? contactsSynced,
     DateTime? lastContactsSyncAt,
+    AssistantControlMode? controlMode,
     bool clearResponse = false,
     bool clearError = false,
     bool clearSuccessHint = false,
@@ -66,6 +77,7 @@ class AgentFlowState {
           clearSuccessHint ? null : (successHint ?? this.successHint),
       contactsSynced: contactsSynced ?? this.contactsSynced,
       lastContactsSyncAt: lastContactsSyncAt ?? this.lastContactsSyncAt,
+      controlMode: controlMode ?? this.controlMode,
     );
   }
 
@@ -116,6 +128,35 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
 
   void clearSuccessHint() {
     state = state.copyWith(successHint: null);
+  }
+
+  void setControlMode(AssistantControlMode mode) {
+    state = state.copyWith(controlMode: mode);
+  }
+
+  bool _isSensitiveActionType(String type) {
+    const sensitive = {
+      'send_sms',
+      'send_sms_scheduled',
+      'make_call',
+      'delete_alarm',
+      'delete_event',
+      'send_email',
+      'send_whatsapp',
+      'open_local_media',
+    };
+    return sensitive.contains(type);
+  }
+
+  bool _canAutoExecutePending(Map<String, dynamic> data) {
+    final payload = data['payload'];
+    if (payload is! Map) return false;
+    final p = Map<String, dynamic>.from(payload);
+    final actionType = (p['action_type'] ?? p['type'] ?? '').toString();
+    if (actionType.isEmpty) return false;
+    if (state.controlMode == AssistantControlMode.safe) return false;
+    if (_isSensitiveActionType(actionType)) return false;
+    return true;
   }
 
   /// Entrée principale depuis la zone de saisie (mode actions activé).
@@ -267,6 +308,23 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       return;
     }
 
+    if (action == 'confirm_needed' && _canAutoExecutePending(data)) {
+      await _executeNative({
+        ...data,
+        'action': 'execute_action',
+        'payload': {
+          ...(data['payload'] is Map ? Map<String, dynamic>.from(data['payload']) : <String, dynamic>{}),
+          'auto_executed': true,
+        },
+      });
+      state = state.copyWith(
+        loading: false,
+        clearResponse: true,
+        successHint: 'Action non sensible exécutée automatiquement.',
+      );
+      return;
+    }
+
     state = state.copyWith(loading: false, lastResponse: data, error: null);
     if (msg.isNotEmpty) {
       _ref.read(chatProvider.notifier).appendAgentAssistantMessage(msg);
@@ -286,8 +344,7 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
 
     if (type == 'send_sms' || type == 'send_sms_scheduled') {
       final rawTo = p['phone_number']?.toString() ?? '';
-      final digits = rawTo.replaceAll(RegExp(r'[^\d+]'), '');
-      final to = digits.startsWith('+') ? digits : '+$digits';
+      final to = SimSmsService.normalizePhone(rawTo);
       var body = p['message']?.toString() ?? '';
       if (body.isEmpty) body = p['message_generated']?.toString() ?? '';
       body = body.trim();
@@ -513,6 +570,71 @@ class AgentFlowNotifier extends StateNotifier<AgentFlowState> {
       _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
             'Alarmes:\n$top',
           );
+      return;
+    }
+
+    if (type == 'search_local_media') {
+      final query = (p['query'] ?? p['q'] ?? '').toString().trim();
+      final mediaType = (p['media_type'] ?? 'any').toString().toLowerCase();
+      if (query.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Précise ce que tu veux chercher (nom, date, type).',
+            );
+        return;
+      }
+      DateTime? dateFrom;
+      DateTime? dateTo;
+      final fromRaw = p['date_from']?.toString();
+      final toRaw = p['date_to']?.toString();
+      if (fromRaw != null && fromRaw.isNotEmpty) dateFrom = DateTime.tryParse(fromRaw);
+      if (toRaw != null && toRaw.isNotEmpty) dateTo = DateTime.tryParse(toRaw);
+      await LocalMediaService.refreshIndex(force: p['refresh_index'] == true);
+      final filtered = await LocalMediaService.searchMedia(
+        query,
+        limit: 12,
+        mediaType: mediaType,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+      if (filtered.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Aucun média local trouvé pour "$query".',
+            );
+        return;
+      }
+      _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+            'J’ai trouvé ${filtered.length} résultat(s) pour "$query".',
+            metadata: {
+              'local_media_results': filtered,
+              'local_media_query': query,
+              'local_media_filters': {
+                'media_type': mediaType,
+                if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
+                if (dateTo != null) 'date_to': dateTo.toIso8601String(),
+              },
+            },
+          );
+      return;
+    }
+
+    if (type == 'open_local_media') {
+      final path = (p['path'] ?? '').toString().trim();
+      if (path.isEmpty) {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              'Chemin média manquant.',
+            );
+        return;
+      }
+      final result = await OpenFile.open(path);
+      if (result.type.name == 'done') {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '✅ Média ouvert.',
+            );
+      } else {
+        _ref.read(chatProvider.notifier).appendAgentAssistantMessage(
+              '❌ Impossible d’ouvrir ce média (${result.message}).',
+            );
+      }
       return;
     }
 
