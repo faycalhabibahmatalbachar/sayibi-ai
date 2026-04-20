@@ -47,8 +47,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ],
               const Spacer(),
               GradientButton(
-                loading: auth.loading,
-                label: AppStrings.loginTitle,
+                isLoading: auth.loading,
+                text: AppStrings.loginTitle,
                 onPressed: () async {
                   final ok = await ref.read(authProvider.notifier).login(_email.text.trim(), _password.text);
                   if (!context.mounted) return;

@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'core/constants/app_strings.dart';
 import 'features/chat/screens/chat_screen.dart';
-import 'features/documents/screens/documents_screen.dart';
-import 'features/generate/screens/generate_screen.dart';
+import 'features/gallery/screens/gallery_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
-import 'features/search/screens/search_screen.dart';
 import 'features/voice/screens/voice_screen.dart';
 import 'shared/widgets/bottom_nav.dart';
 
@@ -19,44 +17,42 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
+  static const _titles = [
+    AppStrings.navChat,
+    AppStrings.navGallery,
+    AppStrings.navProfile,
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final pages = const [
+    const pages = [
       ChatScreen(),
-      DocumentsScreen(),
-      GenerateScreen(),
-      SearchScreen(),
+      GalleryScreen(),
       ProfileScreen(),
     ];
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          [
-            AppStrings.navChat,
-            AppStrings.navDocs,
-            AppStrings.navGenerate,
-            AppStrings.navSearch,
-            AppStrings.navProfile,
-          ][_index],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Voix',
-            onPressed: () {
-              showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (context) => const SizedBox(
-                  height: 420,
-                  child: VoiceScreen(),
+      appBar: _index == 0
+          ? null
+          : AppBar(
+              title: Text(_titles[_index]),
+              actions: [
+                IconButton(
+                  tooltip: 'Voix',
+                  onPressed: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      showDragHandle: true,
+                      builder: (context) => const SizedBox(
+                        height: 420,
+                        child: VoiceScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.graphic_eq),
                 ),
-              );
-            },
-            icon: const Icon(Icons.graphic_eq),
-          ),
-        ],
-      ),
+              ],
+            ),
       body: IndexedStack(
         index: _index,
         children: pages,

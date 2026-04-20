@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/providers/theme_mode_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
@@ -19,14 +21,17 @@ final _router = GoRouter(
   ],
 );
 
-class SayibiApp extends StatelessWidget {
+class SayibiApp extends ConsumerWidget {
   const SayibiApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'SAYIBI AI',
-      theme: AppTheme.dark(),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: mode,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
     );

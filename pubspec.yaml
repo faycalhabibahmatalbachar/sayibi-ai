@@ -46,12 +46,12 @@ dependencies:
   animated_text_kit: ^4.2.2
 
   # Voice
-  record: ^5.0.4
+  record: ^6.2.0
   audioplayers: ^5.2.1
   just_audio: ^0.9.36
 
   # Files
-  file_picker: ^6.1.1
+  file_picker: ^8.0.0
   image_picker: ^1.0.7
   open_file: ^3.3.2
   path_provider: ^2.1.2
@@ -65,10 +65,14 @@ dependencies:
   # Animations
   lottie: ^3.0.0
   flutter_animate: ^4.5.0
+  avatar_glow: ^3.0.1
   shimmer: ^3.0.0
 
   # Charts (pour analytics IA)
   fl_chart: ^0.66.2
+
+  path: ^1.9.0
+  http_parser: ^4.0.2
 
   # Utils
   intl: ^0.19.0
@@ -81,6 +85,8 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.6
+  telephony: ^0.2.0
+  flutter_contacts: ^1.1.9+2
 
 dev_dependencies:
   flutter_test:

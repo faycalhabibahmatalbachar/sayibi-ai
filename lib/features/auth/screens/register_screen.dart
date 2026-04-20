@@ -49,8 +49,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ],
               const Spacer(),
               GradientButton(
-                loading: auth.loading,
-                label: AppStrings.registerTitle,
+                isLoading: auth.loading,
+                text: AppStrings.registerTitle,
                 onPressed: () async {
                   final ok = await ref.read(authProvider.notifier).register(
                         _email.text.trim(),

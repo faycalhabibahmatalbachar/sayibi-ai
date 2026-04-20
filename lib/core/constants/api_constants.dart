@@ -19,6 +19,14 @@ class ApiConstants {
   static const String authLogin = '/auth/login';
   static const String authRegister = '/auth/register';
   static const String authRefresh = '/auth/refresh';
+  /// Échange du JWT Supabase (#access_token) contre les jetons SAYIBI après confirmation e-mail.
+  static const String authSupabaseSession = '/auth/supabase-session';
+
+  /// Même base que [PUBLIC_APP_URL] côté backend (ex. https://sayibi-web.onrender.com).
+  static const String appPublicOrigin = String.fromEnvironment(
+    'APP_PUBLIC_URL',
+    defaultValue: 'https://sayibi-web.onrender.com',
+  );
 
   static const String chatMessage = '/chat/message';
   static const String chatStream = '/chat/stream';
@@ -40,4 +48,11 @@ class ApiConstants {
   static const String userSettings = '/user/settings';
   static const String userUsage = '/user/usage';
   static const String userFiles = '/user/files';
+  static const String userFcmToken = '/user/fcm-token';
+  static const String userNotifyTest = '/user/notify-test';
+
+  /// Mode agent (JSON structuré : intentions, confirmation, ambiguïtés).
+  static const String agentTurn = '/agent/turn';
+  static const String agentLog = '/agent/log';
+  static const String agentContactResolution = '/agent/contact-resolution';
 }

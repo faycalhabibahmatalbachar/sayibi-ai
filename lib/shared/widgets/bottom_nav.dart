@@ -18,11 +18,18 @@ class SayibiBottomNav extends StatelessWidget {
       selectedIndex: index,
       onDestinationSelected: onChanged,
       destinations: const [
-        NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: AppStrings.navChat),
-        NavigationDestination(icon: Icon(Icons.description_outlined), label: AppStrings.navDocs),
-        NavigationDestination(icon: Icon(Icons.auto_awesome), label: AppStrings.navGenerate),
-        NavigationDestination(icon: Icon(Icons.travel_explore), label: AppStrings.navSearch),
-        NavigationDestination(icon: Icon(Icons.person_outline), label: AppStrings.navProfile),
+        NavigationDestination(
+          icon: Icon(Icons.chat_bubble_outline),
+          label: AppStrings.navChat,
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.photo_library_outlined),
+          label: AppStrings.navGallery,
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          label: AppStrings.navProfile,
+        ),
       ],
     );
   }

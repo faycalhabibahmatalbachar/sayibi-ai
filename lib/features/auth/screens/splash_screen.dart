@@ -1,23 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../providers/auth_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
     Future<void>(() async {
+      final redirect = await ref.read(authProvider.notifier).tryCompleteSupabaseEmailRedirect();
+      if (!mounted) return;
+      if (redirect == true) {
+        context.go('/main');
+        return;
+      }
+      if (redirect == false) {
+        context.go('/login');
+        return;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (!mounted) return;
       final p = await SharedPreferences.getInstance();
       final done = p.getBool('onboarding_done') ?? false;
       if (!mounted) return;
@@ -32,7 +46,17 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.auto_awesome, size: 72).animate().fade().scale(),
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: Lottie.asset(
+                'assets/lottie/splash.json',
+                fit: BoxFit.contain,
+                repeat: true,
+                errorBuilder: (_, __, ___) =>
+                    const Icon(Icons.auto_awesome, size: 72),
+              ),
+            ).animate().fade().scale(),
             const SizedBox(height: 16),
             Text(AppStrings.appName, style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 8),

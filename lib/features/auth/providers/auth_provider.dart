@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/utils/strip_url_hash.dart';
+import '../../../core/services/agent_api_service.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 
@@ -8,6 +11,10 @@ final authTokenStoreProvider = Provider<AuthTokenStore>((ref) => AuthTokenStore(
 
 final apiServiceProvider = Provider<ApiService>((ref) {
   return ApiService(ref.watch(authTokenStoreProvider));
+});
+
+final agentApiServiceProvider = Provider<AgentApiService>((ref) {
+  return AgentApiService(ref.watch(apiServiceProvider).client);
 });
 
 class AuthState {
@@ -101,6 +108,49 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _ref.read(authTokenStoreProvider).clear();
     state = const AuthState(authenticated: false);
+  }
+
+  /// Après clic sur le lien de confirmation Supabase (`…#access_token=…`).
+  /// `null` = pas de fragment à traiter ; `true` = session enregistrée ; `false` = échec.
+  Future<bool?> tryCompleteSupabaseEmailRedirect() async {
+    final fragment = Uri.base.fragment;
+    if (fragment.isEmpty || !fragment.contains('access_token')) {
+      return null;
+    }
+    final q = Uri.splitQueryString(fragment);
+    final sat = q['access_token'];
+    if (sat == null || sat.isEmpty) {
+      return null;
+    }
+    state = state.copyWith(loading: true, error: null);
+    try {
+      final dio = _ref.read(apiServiceProvider).client;
+      final res = await dio.post(
+        ApiConstants.authSupabaseSession,
+        data: {'supabase_access_token': sat},
+      );
+      final data = res.data as Map<String, dynamic>;
+      if (data['success'] == true && data['data'] != null) {
+        final d = data['data'] as Map<String, dynamic>;
+        await _ref.read(authTokenStoreProvider).saveTokens(
+              access: d['access_token'] as String,
+              refresh: d['refresh_token'] as String,
+            );
+        state = state.copyWith(loading: false, authenticated: true);
+        if (kIsWeb) {
+          stripAuthFragmentFromBrowserUrl();
+        }
+        return true;
+      }
+      state = state.copyWith(
+        loading: false,
+        error: data['message']?.toString() ?? 'Confirmation impossible',
+      );
+      return false;
+    } catch (e) {
+      state = state.copyWith(loading: false, error: e.toString());
+      return false;
+    }
   }
 }
 

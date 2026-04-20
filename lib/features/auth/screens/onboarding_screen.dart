@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/app_strings.dart';
@@ -40,16 +41,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   _OnboardPage(
                     title: 'Chat intelligent',
                     subtitle: 'Posez vos questions en français, arabe ou anglais.',
+                    lottieAsset: 'assets/lottie/onboarding_1.json',
                     icon: Icons.chat_bubble_outline,
                   ),
                   _OnboardPage(
                     title: 'Documents & voix',
                     subtitle: 'Analysez des PDF et utilisez la dictée vocale.',
+                    lottieAsset: 'assets/lottie/onboarding_2.json',
                     icon: Icons.mic_none,
                   ),
                   _OnboardPage(
                     title: '100% gratuit',
                     subtitle: 'Conçu pour le Tchad, l’Afrique et le monde francophone.',
+                    lottieAsset: 'assets/lottie/onboarding_3.json',
                     icon: Icons.favorite_outline,
                   ),
                 ],
@@ -99,11 +103,13 @@ class _OnboardPage extends StatelessWidget {
   const _OnboardPage({
     required this.title,
     required this.subtitle,
+    required this.lottieAsset,
     required this.icon,
   });
 
   final String title;
   final String subtitle;
+  final String lottieAsset;
   final IconData icon;
 
   @override
@@ -113,7 +119,16 @@ class _OnboardPage extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 88),
+          SizedBox(
+            height: 220,
+            width: 220,
+            child: Lottie.asset(
+              lottieAsset,
+              fit: BoxFit.contain,
+              repeat: true,
+              errorBuilder: (_, __, ___) => Icon(icon, size: 88),
+            ),
+          ),
           const SizedBox(height: 24),
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 12),
